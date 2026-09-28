@@ -52,6 +52,9 @@ from services.control_center.application.admin_service import (
     AdminService,
     RabbitQueueInspector,
 )
+from services.control_center.application.content_evaluation_query_service import (
+    ContentEvaluationQueryService,
+)
 from services.control_center.publishers import (
     TaskDispatchLoop,
     TaskDispatchLoopConfig,
@@ -79,6 +82,7 @@ class ControlCenterRuntime:
     command_publisher: PikaRecorderCommandPublisher
     api_key: str
     content_prompt_service: PromptManagementService | None = None
+    content_evaluation_query_service: ContentEvaluationQueryService | None = None
     admin_service: AdminService | None = None
     event_consumer: PikaMediaEventConsumer | None = None
     event_consumer_enabled: bool = False
@@ -313,6 +317,7 @@ def build_control_center_runtime() -> ControlCenterRuntime:
     )
     recording_server_service = RecordingServerService(SessionLocal)
     task_query_service = TaskQueryService(SessionLocal)
+    content_evaluation_query_service = ContentEvaluationQueryService(SessionLocal)
     instance_id = _default_instance_id()
     dispatch_loop = TaskDispatchLoop(
         task_service,
@@ -424,6 +429,7 @@ def build_control_center_runtime() -> ControlCenterRuntime:
         api_key=settings.API_KEY,
         admin_service=admin_service,
         content_prompt_service=content_prompt_service,
+        content_evaluation_query_service=content_evaluation_query_service,
         event_consumer=event_consumer,
         event_consumer_enabled=_environment_bool(
             "CONTROL_CENTER_EVENT_CONSUMER_ENABLED",

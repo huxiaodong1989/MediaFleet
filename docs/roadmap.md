@@ -1,28 +1,32 @@
-# Roadmap
+# 路线图
 
-## Public baseline
+## 已完成：公开仓库基线
 
-- Remove environment-specific code and examples.
-- Replace the historical migration chain with a clean schema baseline.
-- Stabilize service names, configuration, and Docker images.
-- Add automated secret, dependency, and license checks.
+- 清理环境特定代码、内部资料和真实配置示例。
+- 用干净的数据库基线替代历史迁移链。
+- 稳定服务名称、配置前缀和 Docker 镜像名称。
+- 添加密钥、依赖、许可证、安全和贡献说明。
+- 补齐中文总体架构、服务边界、一致性和扩展开发文档。
 
-## Agent-facing interfaces
+## 近期：开发者接口
 
-- Publish a typed Python SDK.
-- Add the `mediafleet` CLI with JSON output and stable exit codes.
-- Add a separately deployable MCP server backed by the SDK.
-- Define scopes and audit rules for mutating CLI/MCP operations.
+- 发布类型化 Python SDK。
+- 添加支持 JSON 输出和稳定退出码的 `mediafleet` CLI。
+- 基于 SDK 添加独立部署的 MCP Server。
+- 为 CLI/MCP 变更操作定义权限范围、幂等和审计规则。
+- 逐步让旧兼容 API 复用统一应用服务并标注废弃计划。
 
-## Operations console
+## 中期：运维能力
 
-- Expand node, task, recording, and artifact visibility.
-- Add drain and maintenance workflows.
-- Introduce typed, versioned runtime configuration with rollout and rollback.
-- Keep bootstrap secrets in the deployment platform.
+- 扩展节点、任务、录制和媒体产物的可观测性。
+- 添加节点排空、维护和恢复流程。
+- 引入类型化、版本化运行时配置，支持预检、灰度、确认和回滚。
+- 保持数据库、RabbitMQ、对象存储和 ZLMediaKit 凭据由部署平台管理。
 
-## Reliability
+## 持续：可靠性与质量
 
-- Complete recorder execution generations and long-running leases.
-- Persist post-processing stage checkpoints and notification compensation.
-- Add multi-control-plane failure injection and repeatable capacity tests.
+- 完成录制执行代次和长任务租约的边界场景。
+- 完善后处理阶段检查点和通知补偿。
+- 添加多控制中心故障注入、RabbitMQ 断连恢复和可重复容量测试。
+- 建立真实 MySQL、RabbitMQ、ZLMediaKit 和对象存储集成测试环境。
+- 逐步消除 Pydantic 兼容警告和历史兼容模型。

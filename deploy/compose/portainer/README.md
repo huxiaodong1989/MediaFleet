@@ -28,10 +28,10 @@
 容器名互相访问。网络只需要创建一次：
 
 ```bash
-docker network create --driver bridge --subnet 192.168.100.0/24 mediafleet-network
+docker network create --driver bridge mediafleet-network
 ```
 
-如果服务器提示地址池冲突，换一个与现有 Docker 网络不重叠的网段。不要把 `driver` 或
+如需固定网段，请在部署环境中选择与现有网络不冲突的私有网段。不要把 `driver` 或
 `ipam` 写在 `services.<service>.networks.<network>` 下；`ipam` 只能写在顶层网络定义中，
 本模板因为复用已创建的外部网络，不在 Compose 中配置 `ipam`。
 

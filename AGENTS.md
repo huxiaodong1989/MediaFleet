@@ -1,54 +1,40 @@
-# MediaFleet agent instructions
+# MediaFleet 智能体协作说明
 
-## Project boundaries
+## 项目边界
 
-MediaFleet is a distributed media control and processing platform composed of
-independently deployable services.
+MediaFleet 是由多个可独立部署服务组成的分布式媒体控制与处理平台。
 
-- MySQL is the source of truth for nodes, bindings, tasks, dispatch state, and
-  media artifacts.
-- RabbitMQ provides at-least-once delivery. Producers and consumers must be
-  idempotent and use publisher confirms, manual acknowledgements, bounded
-  retries, and dead-letter queues.
-- A recording command is always routed to the recorder node that owns the
-  corresponding ZLMediaKit instance and recording files.
-- Generic media tasks are consumed competitively from a shared durable queue.
-- Offline ASR model loading and inference remain inside `media-worker`.
-- The control plane must not run FFmpeg, read recorder-local directories, or
-  load media/AI models.
-- In-memory state and Redis may optimize runtime behavior but must not become
-  the only source of distributed correctness.
+- MySQL 是节点、绑定、任务、投递状态和媒体产物的事实来源。
+- RabbitMQ 提供至少一次投递。生产者和消费者必须支持幂等，并使用发布确认、手动 ACK、
+  有限重试和死信队列。
+- 录制命令必须路由到拥有对应 ZLMediaKit 实例和录像文件的录制节点。
+- 通用媒体任务由共享持久队列上的 Worker 竞争消费。
+- 离线 ASR 模型加载和推理必须保留在 `media-worker` 内。
+- 控制平面不能运行 FFmpeg、读取录制节点本地目录或加载媒体/AI 模型。
+- 内存状态和 Redis 可以优化运行效率，但不能成为分布式正确性的唯一来源。
 
-## Before changing code
+## 修改代码前
 
-1. Run `git status --short --branch` and preserve existing work.
-2. Read `docs/architecture/overview.md`.
-3. Read `docs/project-status.md` and continue from the first unfinished item.
-4. Inspect every producer and consumer before changing a message or API
-   contract.
-5. Keep changes within one coherent service boundary whenever possible.
+1. 执行 `git status --short --branch` 并保留已有工作。
+2. 阅读 `docs/architecture/overview.md`。
+3. 阅读 `docs/project-status.md`，从第一个未完成事项继续。
+4. 修改消息或 API 契约前，检查每一个生产者和消费者。
+5. 尽可能让一次变更保持在一个清晰的服务边界内。
 
-## Security and open-source hygiene
+## 安全与开源卫生
 
-- Never commit `.env` files, credentials, tokens, private keys, signed URLs,
-  credential-bearing RTSP URLs, or internal network addresses.
-- Logs must redact URL user information and sensitive query parameters.
-- Do not add binary model weights or fonts without a documented redistributable
-  license.
-- Configuration examples must use empty values or unmistakable placeholders.
-- Runtime configuration APIs must be typed and allowlisted; never expose an
-  arbitrary environment-variable mutation endpoint.
+- 不得提交 `.env`、凭据、令牌、私钥、签名 URL、带凭据的 RTSP URL 或内网地址。
+- 日志必须脱敏 URL 用户信息和敏感查询参数。
+- 没有可再分发许可证说明时，不得添加二进制模型权重或字体。
+- 配置示例只能使用空值或明确的占位符。
+- 运行时配置 API 必须类型化并使用允许列表；不得暴露任意环境变量修改端点。
 
-## Interfaces
+## 接口
 
-REST, CLI, MCP, and the operations console must call the same application
-services. CLI and MCP adapters should normally access the control-plane API via
-the shared SDK rather than bypassing authorization through direct database or
-RabbitMQ access.
+REST、CLI、MCP 和运维控制台必须调用相同应用服务。CLI 和 MCP 适配器通常应通过共享
+SDK 访问控制平面 API，不能通过直接访问数据库或 RabbitMQ 绕过授权。
 
-## Completion
+## 完成要求
 
-Run tests and static checks proportional to the change. Update
-`docs/project-status.md` with completed scope, validation, remaining risks, and
-one concrete next action. Update architecture documentation when a durable
-decision changes.
+运行与变更风险相称的测试和静态检查。更新 `docs/project-status.md`，写明完成范围、验证、
+剩余风险和一个明确的下一步。持久架构决策发生变化时同步更新架构文档。

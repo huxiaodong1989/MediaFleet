@@ -17,7 +17,6 @@ from media_platform.infrastructure.database.url import (
     build_dm_connect_args,
 )
 import media_platform.infrastructure.database.models  # noqa: F401
-import services.content_analysis.infrastructure.models  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

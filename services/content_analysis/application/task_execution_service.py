@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 import logging
 from threading import Event, Lock, Thread
+from time import perf_counter
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -23,12 +24,17 @@ from services.content_analysis.application.workflow import (
     ClassEvaluationWorkflow,
     LeaseLostError,
 )
+from services.content_analysis.application.log_sanitizer import sanitize_log_value
 from services.content_analysis.infrastructure.repositories import (
     ContentEvaluationRepository,
 )
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+class _CallbackDeliveryError(RuntimeError):
+    """评课已完成，但终态业务回调尚未成功。"""
 
 
 class _LeaseRenewer:
@@ -135,6 +141,14 @@ class ContentTaskExecutionService:
                     TaskStatus.FAILED.value,
                     TaskStatus.CANCELLED.value,
                 }:
+                    LOGGER.info(
+                        "AI评课任务已是终态，跳过重复消息: task_id=%s, "
+                        "business_task_id=%s, status=%s, worker_id=%s",
+                        message.task_id,
+                        sanitize_log_value(message.business_task_id),
+                        status,
+                        self.worker_id,
+                    )
                     return None
                 generation = repository.claim_execution_with_lease(
                     message.task_id,
@@ -199,6 +213,18 @@ class ContentTaskExecutionService:
                         error_message=error_message,
                         operator=self.worker_id,
                     )
+        LOGGER.warning(
+            "AI评课任务执行失败已写回: task_id=%s, business_task_id=%s, "
+            "generation=%s, attempt=%s/%s, will_retry=%s, error_type=%s, error=%s",
+            message.task_id,
+            sanitize_log_value(message.business_task_id),
+            generation,
+            message.attempt + 1,
+            message.max_attempts,
+            should_retry,
+            type(error).__name__,
+            sanitize_log_value(error, max_length=500),
+        )
 
     def _write_callback(self, task_id: str, result: dict) -> None:
         with self.session_factory() as session:
@@ -209,10 +235,121 @@ class ContentTaskExecutionService:
                     updated_by=self.worker_id,
                 )
 
+    def _recover_terminal_callback(self, message: TaskDispatchMessage) -> bool:
+        """在重复投递时补偿“终态已落库、回调尚未完成”的崩溃窗口。"""
+
+        with self.session_factory() as session:
+            task = MediaTaskRepository(session).get(message.task_id)
+            if task is None:
+                return False
+            if message.delivery_channel != TaskDeliveryChannel.CONTENT_ANALYSIS:
+                raise TaskPermanentError("收到非内容分析通道任务")
+            if message.task_type != "content.class_evaluation":
+                raise TaskPermanentError(f"不支持的内容任务类型: {message.task_type}")
+            if task.message_id != message.message_id:
+                raise TaskPermanentError("AI评课任务消息编号与数据库不一致")
+            status = str(task.status or "").lower()
+            if status not in {
+                TaskStatus.COMPLETED.value,
+                TaskStatus.FAILED.value,
+                TaskStatus.CANCELLED.value,
+            }:
+                return False
+            callback_result = task.callback_result
+            if isinstance(callback_result, dict) and (
+                callback_result.get("success") is True
+                or callback_result.get("skipped") is True
+            ):
+                LOGGER.info(
+                    "AI评课终态回调已完成，跳过重复消息: task_id=%s, "
+                    "business_task_id=%s, status=%s",
+                    message.task_id,
+                    sanitize_log_value(message.business_task_id),
+                    status,
+                )
+                return True
+            params = dict(task.params or {})
+            callback_url = task.callback_url
+            result = dict(task.result or {})
+            error_message = task.error_message
+
+        if status != TaskStatus.COMPLETED.value:
+            result = {
+                "taskId": message.business_task_id or params.get("taskId"),
+                "classroomId": params.get("classroomId"),
+                "status": status.upper(),
+                "progress": 1.0,
+                "errorMessage": error_message,
+            }
+        callback_token = params.get("webhookToken") or params.get("webhook_token")
+        if not callback_url:
+            self._write_callback(
+                message.task_id,
+                {
+                    "success": False,
+                    "skipped": True,
+                    "callback_at": datetime.now().isoformat(),
+                },
+            )
+            LOGGER.info(
+                "AI评课终态回调无需发送: task_id=%s, business_task_id=%s, status=%s",
+                message.task_id,
+                sanitize_log_value(message.business_task_id),
+                status,
+            )
+            return True
+
+        callback_success = asyncio.run(
+            self.workflow.progress_callback.notify(
+                callback_url,
+                result,
+                callback_token,
+            )
+        )
+        self._write_callback(
+            message.task_id,
+            {
+                "success": callback_success,
+                "skipped": False,
+                "callback_at": datetime.now().isoformat(),
+                "recovered": True,
+            },
+        )
+        if not callback_success:
+            LOGGER.warning(
+                "AI评课终态回调补偿失败，将通过消息重试: task_id=%s, "
+                "business_task_id=%s, status=%s",
+                message.task_id,
+                sanitize_log_value(message.business_task_id),
+                status,
+            )
+            raise TaskRetryableError("AI评课终态业务回调失败")
+        LOGGER.info(
+            "AI评课终态回调补偿成功: task_id=%s, business_task_id=%s, status=%s",
+            message.task_id,
+            sanitize_log_value(message.business_task_id),
+            status,
+        )
+        return True
+
     def handle(self, message: TaskDispatchMessage) -> None:
+        if self._recover_terminal_callback(message):
+            return
         generation = self._claim(message)
         if generation is None:
             return
+        started_at = perf_counter()
+        LOGGER.info(
+            "AI评课任务开始执行: task_id=%s, business_task_id=%s, school_code=%s, "
+            "worker_id=%s, generation=%s, attempt=%s/%s",
+            message.task_id,
+            sanitize_log_value(message.business_task_id),
+            sanitize_log_value(message.school_code),
+            self.worker_id,
+            generation,
+            message.attempt + 1,
+            message.max_attempts,
+        )
         renewer = _LeaseRenewer(self, message, generation)
         renewer.start()
         with self._processing_lock:
@@ -235,6 +372,14 @@ class ContentTaskExecutionService:
                         )
                 if not updated:
                     raise LeaseLostError("AI评课最终结果写回被执行代次校验拒绝")
+                LOGGER.info(
+                    "AI评课任务结果已写回: task_id=%s, business_task_id=%s, "
+                    "generation=%s, worker_id=%s",
+                    message.task_id,
+                    sanitize_log_value(outcome.business_task_id),
+                    generation,
+                    self.worker_id,
+                )
                 callback_success = asyncio.run(
                     self.workflow.progress_callback.notify(
                         outcome.callback_url,
@@ -250,7 +395,42 @@ class ContentTaskExecutionService:
                         "callback_at": datetime.now().isoformat(),
                     },
                 )
+                if outcome.callback_url and not callback_success:
+                    raise _CallbackDeliveryError("AI评课终态业务回调失败")
+                LOGGER.info(
+                    "AI评课任务执行成功: task_id=%s, business_task_id=%s, "
+                    "worker_id=%s, generation=%s, callback=%s, duration_ms=%s",
+                    message.task_id,
+                    sanitize_log_value(outcome.business_task_id),
+                    self.worker_id,
+                    generation,
+                    (
+                        "skipped"
+                        if not outcome.callback_url
+                        else "success" if callback_success else "failed"
+                    ),
+                    round((perf_counter() - started_at) * 1000),
+                )
+            except _CallbackDeliveryError as exc:
+                LOGGER.warning(
+                    "AI评课任务结果已完成但业务回调失败，将仅重试回调: "
+                    "task_id=%s, business_task_id=%s, worker_id=%s, generation=%s",
+                    message.task_id,
+                    sanitize_log_value(message.business_task_id),
+                    self.worker_id,
+                    generation,
+                )
+                raise TaskRetryableError(str(exc)) from exc
             except LeaseLostError as exc:
+                LOGGER.warning(
+                    "AI评课任务执行权丢失: task_id=%s, business_task_id=%s, "
+                    "worker_id=%s, generation=%s, error=%s",
+                    message.task_id,
+                    sanitize_log_value(message.business_task_id),
+                    self.worker_id,
+                    generation,
+                    sanitize_log_value(exc, max_length=500),
+                )
                 raise TaskBusyError(str(exc)) from exc
             except ValidationError as exc:
                 self._mark_failure(message, generation, exc, retryable=False)

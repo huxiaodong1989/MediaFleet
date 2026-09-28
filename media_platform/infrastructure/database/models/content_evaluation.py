@@ -1,4 +1,4 @@
-"""AI 评课业务记录、步骤检查点与提示词版本 ORM。"""
+"""AI 评课聚合记录与步骤检查点 ORM。"""
 
 import uuid
 
@@ -16,9 +16,6 @@ from sqlalchemy import (
 )
 
 from media_platform.infrastructure.database.base import Base
-from media_platform.infrastructure.database.models.content_prompt_bundle import (
-    ContentPromptBundleModel,
-)
 from media_platform.infrastructure.database.models.common import AuditColumnsMixin
 from media_platform.infrastructure.database.types import portable_json_type
 
@@ -34,7 +31,13 @@ class ContentEvaluationRecordModel(AuditColumnsMixin, Base):
         {"comment": "AI评课记录表"},
     )
 
-    id = Column("zj", String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="主键")
+    id = Column(
+        "zj",
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        comment="主键",
+    )
     task_id = Column(
         "rwzj",
         String(36),
@@ -42,8 +45,18 @@ class ContentEvaluationRecordModel(AuditColumnsMixin, Base):
         nullable=False,
         comment="公共任务主键",
     )
-    business_task_id = Column("ywrwbh", String(128), nullable=False, comment="业务评课任务编号")
-    classroom_id = Column("ktbh", String(128), nullable=False, comment="课堂编号")
+    business_task_id = Column(
+        "ywrwbh",
+        String(128),
+        nullable=False,
+        comment="业务评课任务编号",
+    )
+    classroom_id = Column(
+        "ktbh",
+        String(128),
+        nullable=False,
+        comment="课堂编号",
+    )
     status = Column(
         "rwzt",
         String(20),
@@ -52,15 +65,57 @@ class ContentEvaluationRecordModel(AuditColumnsMixin, Base):
         comment="评课状态：pending、processing、completed、failed、cancelled",
     )
     current_step = Column("dqbz", String(64), nullable=True, comment="当前执行步骤代码")
-    progress = Column("jd", Float, nullable=False, server_default=text("0"), comment="评课进度百分比")
-    execution_generation = Column("zxdc", Integer, nullable=False, server_default=text("0"), comment="当前执行代次")
-    prompt_bundle_id = Column("tsbbzj", String(36), nullable=True, comment="本次任务锁定的提示词版本主键")
-    material_digest = Column("clzy", String(64), nullable=True, comment="输入材料SHA-256摘要")
-    model_version = Column("mxbb", String(128), nullable=True, comment="本次任务模型版本快照")
-    request_snapshot = Column("qqcs", portable_json_type(), nullable=False, comment="已脱敏的评课请求参数JSON")
-    result = Column("pjjg", portable_json_type(), nullable=True, comment="八步评课聚合结果JSON")
+    progress = Column(
+        "jd",
+        Float,
+        nullable=False,
+        server_default=text("0"),
+        comment="评课进度百分比",
+    )
+    execution_generation = Column(
+        "zxdc",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+        comment="当前执行代次",
+    )
+    prompt_bundle_id = Column(
+        "tsbbzj",
+        String(36),
+        nullable=True,
+        comment="本次任务锁定的提示词版本主键",
+    )
+    material_digest = Column(
+        "clzy",
+        String(64),
+        nullable=True,
+        comment="输入材料SHA-256摘要",
+    )
+    model_version = Column(
+        "mxbb",
+        String(128),
+        nullable=True,
+        comment="本次任务模型版本快照",
+    )
+    request_snapshot = Column(
+        "qqcs",
+        portable_json_type(),
+        nullable=False,
+        comment="已脱敏的评课请求参数JSON",
+    )
+    result = Column(
+        "pjjg",
+        portable_json_type(),
+        nullable=True,
+        comment="八步评课聚合结果JSON",
+    )
     error_message = Column("cwxx", Text, nullable=True, comment="评课错误信息")
-    preprocessed_subtitle = Column("yclzm", Text, nullable=True, comment="可选的预处理字幕调试快照")
+    preprocessed_subtitle = Column(
+        "yclzm",
+        Text,
+        nullable=True,
+        comment="可选的预处理字幕调试快照",
+    )
 
 
 class ContentEvaluationStepModel(AuditColumnsMixin, Base):
@@ -73,7 +128,13 @@ class ContentEvaluationStepModel(AuditColumnsMixin, Base):
         {"comment": "AI评课步骤检查点表"},
     )
 
-    id = Column("zj", String(36), primary_key=True, default=lambda: str(uuid.uuid4()), comment="主键")
+    id = Column(
+        "zj",
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        comment="主键",
+    )
     task_id = Column(
         "rwzj",
         String(36),
@@ -94,15 +155,21 @@ class ContentEvaluationStepModel(AuditColumnsMixin, Base):
     input_digest = Column("srzy", String(64), nullable=False, comment="步骤输入SHA-256摘要")
     prompt_bundle_id = Column("tsbbzj", String(36), nullable=False, comment="提示词版本主键")
     model_version = Column("mxbb", String(128), nullable=False, comment="模型版本")
-    result = Column("bzjg", portable_json_type(), nullable=True, comment="步骤结构化结果JSON")
-    token_usage = Column("lpyl", portable_json_type(), nullable=True, comment="步骤模型令牌用量JSON")
+    result = Column(
+        "bzjg",
+        portable_json_type(),
+        nullable=True,
+        comment="步骤结构化结果JSON",
+    )
+    token_usage = Column(
+        "lpyl",
+        portable_json_type(),
+        nullable=True,
+        comment="步骤模型令牌用量JSON",
+    )
     error_message = Column("cwxx", Text, nullable=True, comment="步骤错误信息")
     started_at = Column("kssj", DateTime(timezone=False), nullable=True, comment="步骤开始时间")
     completed_at = Column("wcsj", DateTime(timezone=False), nullable=True, comment="步骤完成时间")
 
 
-__all__ = [
-    "ContentEvaluationRecordModel",
-    "ContentEvaluationStepModel",
-    "ContentPromptBundleModel",
-]
+__all__ = ["ContentEvaluationRecordModel", "ContentEvaluationStepModel"]

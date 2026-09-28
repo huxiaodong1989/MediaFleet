@@ -1,19 +1,32 @@
-# Changelog
+# 变更记录
 
-All notable changes to MediaFleet will be documented here.
+MediaFleet 的重要变更记录在此。项目遵循
+[Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式，并计划在首个稳定版后
+采用语义化版本。
 
-The project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-and intends to use semantic versioning after the first stable release.
+## [未发布]
 
-## [Unreleased]
+### 新增
 
-### Added
+- 建立总体架构、服务边界、消息一致性、扩展开发、项目背景和文档导航等中文文档。
+- 将中文设为 GitHub 默认 README 和仓库级 Markdown 的默认语言。
+- 内容分析服务使用专用长任务消费者，在独立处理线程执行评课并由 Pika I/O 线程完成
+  ACK、重试和死信结算。
+- 控制中心从 MySQL 评课记录读取当前步骤、进度和阶段性结果。
 
-- Clean public repository baseline derived from the distributed media platform.
-- MIT license, security policy, contribution guide, and public architecture
-  documentation.
+### 修复
 
-### Removed
+- 移除内容分析运行时对已迁移旧模型模块的导入，修复容器在 FastAPI lifespan 装配阶段
+  启动失败的问题，并增加真实运行时构建回归测试。
+- 对内容分析终态回调增加重复投递补偿，避免回调失败导致完整八步评课重复执行。
 
-- Historical Git metadata, populated environment files, internal deployment
-  reports, private CI configuration, and unlicensed binary assets.
+## [0.1.0] - 2026-09-28
+
+### 新增
+
+- 从分布式媒体平台代码建立干净的公开仓库基线。
+- 添加 MIT 许可证、安全策略、贡献指南和公开架构说明。
+
+### 移除
+
+- 历史 Git 元数据、填写过真实值的环境文件、内部部署报告、私有 CI 配置和无授权二进制资产。

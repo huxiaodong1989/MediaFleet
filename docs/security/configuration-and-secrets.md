@@ -1,30 +1,26 @@
-# Configuration and secrets
+# 配置与密钥管理
 
-MediaFleet separates bootstrap configuration from runtime configuration.
+MediaFleet 将启动配置与运行时配置分开管理。
 
-## Bootstrap configuration
+## 启动配置
 
-Database, RabbitMQ, object-storage, ZLMediaKit, and encryption credentials are
-supplied by the deployment platform or a secret manager. They are not editable
-through the operations console and generally require a restart to change.
+数据库、RabbitMQ、对象存储、ZLMediaKit 和加密凭据由部署平台或密钥管理系统提供。
+这类配置不能通过运维控制台修改，通常需要重启服务才能生效。
 
-## Runtime configuration
+仓库中的 `.env.example` 只允许使用空值或明确占位符。真实 `.env` 不得提交；带认证信息的
+RTSP URL、签名下载 URL、私钥和令牌也不得出现在配置示例、测试夹具或文档中。
 
-Concurrency limits, capacity thresholds, retry budgets, scheduling weights,
-and drain state may later be managed through a typed configuration registry.
+## 运行时配置
 
-Each definition should include a stable key, owner, scope, data type, default,
-validation constraints, sensitivity, reload behavior, version, author, and
-audit history.
+并发限制、容量阈值、重试预算、调度权重和节点排空状态，后续可以通过类型化配置注册表管理。
 
-The API exposes only allowlisted definitions. It never provides a generic
-endpoint that changes arbitrary environment variables. Sensitive settings are
-stored as encrypted values or secret references and are never returned after
-creation. Changes should support validation, preview, staged rollout, rollback,
-and per-node acknowledgement.
+每个配置定义应包含稳定键、所有者、作用域、数据类型、默认值、校验约束、敏感级别、热加载
+行为、版本、修改者和审计历史。
 
-## Logging
+API 只暴露允许列表中的配置，不提供任意环境变量修改端点。敏感配置应保存为加密值或密钥
+引用，创建后不返回明文。变更流程应支持校验、预览、分阶段发布、回滚和节点确认。
 
-Logs must redact URL user information and sensitive query parameters such as
-`token`, `signature`, `secret`, `key`, and temporary storage signatures.
-Credential-bearing RTSP URLs must never be logged.
+## 日志脱敏
+
+日志必须移除 URL 用户信息，以及 `token`、`signature`、`secret`、`key` 等敏感查询参数。
+不得记录带凭据的 RTSP URL、对象存储临时签名或完整 Authorization 请求头。

@@ -19,7 +19,7 @@ from media_platform.contracts.topology import (
     CONTENT_ANALYSIS_TASK_QUEUE,
     CONTENT_ANALYSIS_TASK_RETRY_EXCHANGE,
 )
-from media_platform.infrastructure.messaging import PikaTaskConsumer, RabbitMQConsumerConfig
+from media_platform.infrastructure.messaging import RabbitMQConsumerConfig
 from services.content_analysis.application.log_sanitizer import mask_secret, sanitize_url
 from services.content_analysis.application.prompt_defaults import load_bootstrap_prompt_bundle
 from services.content_analysis.application.task_execution_service import ContentTaskExecutionService
@@ -32,6 +32,9 @@ from services.content_analysis.infrastructure.clients import (
 )
 from services.content_analysis.infrastructure.file_preprocessor import EvaluationFilePreprocessor
 from services.content_analysis.infrastructure.repositories import PromptBundleRepository
+from services.content_analysis.infrastructure.task_consumer import (
+    ContentAnalysisTaskConsumer,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -92,7 +95,7 @@ def _ensure_bootstrap_prompt(session_factory, default_model: str) -> None:
 
 @dataclass
 class ContentAnalysisRuntime:
-    consumer: PikaTaskConsumer
+    consumer: ContentAnalysisTaskConsumer
     execution_service: ContentTaskExecutionService
     worker_id: str
     consumer_enabled: bool = True
@@ -144,7 +147,6 @@ class ContentAnalysisRuntime:
 def build_content_analysis_runtime() -> ContentAnalysisRuntime:
     from media_platform.common.config import get_settings
     from media_platform.infrastructure.database.init import init_database
-    from services.content_analysis.infrastructure import models as _content_models  # noqa: F401
 
     settings = get_settings()
     init_database(settings)
@@ -200,7 +202,7 @@ def build_content_analysis_runtime() -> ContentAnalysisRuntime:
     )
     rabbitmq = settings.rabbitmq
     prefetch = _positive_int("CONTENT_ANALYSIS_PREFETCH_COUNT", 1)
-    consumer = PikaTaskConsumer(
+    consumer = ContentAnalysisTaskConsumer(
         RabbitMQConsumerConfig(
             host=rabbitmq.host,
             exchange=CONTENT_ANALYSIS_TASK_EXCHANGE,

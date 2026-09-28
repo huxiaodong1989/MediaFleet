@@ -6,7 +6,7 @@ from media_platform.contracts.content_evaluation import (
     PromptStepDefinition,
 )
 from services.content_analysis.application import PromptManagementService
-from services.content_analysis.infrastructure.models import ContentPromptBundleModel
+from media_platform.infrastructure.database.models import ContentPromptBundleModel
 from services.content_analysis.infrastructure.repositories import PromptBundleRepository
 
 

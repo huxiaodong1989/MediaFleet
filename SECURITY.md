@@ -1,22 +1,20 @@
-# Security policy
+# 安全策略
 
-## Supported versions
+## 支持版本
 
-MediaFleet is currently pre-release. Security fixes are applied to the latest
-commit on the default branch.
+MediaFleet 当前处于预发布阶段，安全修复应用于默认分支的最新版本。
 
-## Reporting a vulnerability
+## 报告漏洞
 
-Do not open a public issue for a suspected vulnerability or exposed secret.
-Use the repository's private GitHub security advisory workflow. Include the
-affected component, reproduction steps, impact, and any suggested mitigation.
+怀疑存在漏洞或凭据泄漏时，请勿创建公开 Issue。请使用 GitHub 仓库的私有安全公告功能，
+说明受影响组件、复现步骤、影响范围和建议缓解措施。
 
-## Secret handling
+## 密钥处理
 
-- Never commit populated `.env` files or credential-bearing URLs.
-- Rotate a credential immediately if it may have entered Git history.
-- Use deployment-platform secrets or a dedicated secret manager in production.
-- Sensitive configuration values must not be returned by APIs after creation.
-- Logs and errors must redact passwords, tokens, signatures, and URL user info.
+- 不得提交填写过真实值的 `.env` 或带凭据的 URL。
+- 凭据可能进入 Git 历史时应立即轮换。
+- 生产环境使用部署平台 Secret 或专用密钥管理系统。
+- 敏感配置创建后不得通过 API 返回明文。
+- 日志和错误信息必须脱敏密码、令牌、签名、URL 用户信息和敏感查询参数。
 
-See [configuration and secrets](docs/security/configuration-and-secrets.md).
+详细规则见[配置与密钥管理](docs/security/configuration-and-secrets.md)。

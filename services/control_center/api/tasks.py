@@ -19,6 +19,7 @@ from media_platform.contracts.content_evaluation import (
 from media_platform.contracts.task import TaskDeliveryChannel
 from services.control_center.api.dependencies import (
     get_admin_service,
+    get_content_evaluation_query_service,
     get_task_dispatch_service,
     get_task_query_service,
     verify_internal_api_key,
@@ -26,6 +27,9 @@ from services.control_center.api.dependencies import (
 from services.control_center.application.admin_service import (
     AdminOperationError,
     AdminService,
+)
+from services.control_center.application.content_evaluation_query_service import (
+    ContentEvaluationQueryService,
 )
 from services.control_center.api.schemas import (
     TaskCreateRequest,
@@ -107,6 +111,9 @@ def get_class_evaluation_result(
     business_task_id: str,
     school_code: str | None = None,
     service: TaskQueryService = Depends(get_task_query_service),
+    evaluation_service: ContentEvaluationQueryService = Depends(
+        get_content_evaluation_query_service
+    ),
 ) -> ClassEvaluationRecordResponse:
     task = service.get_by_business_task_id(
         business_task_id,
@@ -116,16 +123,30 @@ def get_class_evaluation_result(
     if task is None:
         raise HTTPException(status_code=404, detail="未找到AI评课任务")
     params = task.params or {}
+    progress_record = evaluation_service.get_by_task_id(task.task_id)
     result = task.result or None
+    progress = (
+        progress_record.progress
+        if progress_record is not None
+        else float(task.progress or 0)
+    )
+    current_step = (
+        progress_record.current_step if progress_record is not None else None
+    )
+    error_message = task.error_message or (
+        progress_record.error_message if progress_record is not None else None
+    )
+    if result is None and progress_record is not None:
+        result = progress_record.result
     return ClassEvaluationRecordResponse(
         taskId=business_task_id,
         internalTaskId=task.task_id,
         classroomId=str(params.get("classroomId") or ""),
         status=str(task.status).upper(),
-        progress=float(task.progress or 0) / 100,
-        currentStep=None,
+        progress=progress / 100,
+        currentStep=current_step,
         evaluationResult=result,
-        errorMessage=task.error_message,
+        errorMessage=error_message,
         promptVersion=(result or {}).get("promptVersion"),
         createdAt=task.created_at,
         updatedAt=task.updated_at,

@@ -14,7 +14,6 @@ from media_platform.infrastructure.database.base import Base
 
 # Register current MediaFleet models for autogenerate.
 import media_platform.infrastructure.database.models  # noqa: F401,E402
-import services.content_analysis.infrastructure.models  # noqa: F401,E402
 
 
 config = context.config

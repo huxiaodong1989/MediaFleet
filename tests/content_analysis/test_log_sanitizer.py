@@ -1,4 +1,8 @@
-from services.content_analysis.application.log_sanitizer import mask_secret, sanitize_url
+from services.content_analysis.application.log_sanitizer import (
+    mask_secret,
+    sanitize_log_value,
+    sanitize_url,
+)
 
 
 def test_model_configuration_log_values_are_sanitized():
@@ -19,3 +23,15 @@ def test_model_configuration_log_values_are_sanitized():
 
 def test_empty_model_api_key_is_reported_as_not_configured():
     assert mask_secret("") == "not-configured"
+
+
+def test_business_log_value_is_single_line_and_limited():
+    value = "课堂一\r\n伪造日志" + "很长" * 100
+
+    sanitized = sanitize_log_value(value, max_length=20)
+
+    assert "\r" not in sanitized
+    assert "\n" not in sanitized
+    assert sanitized.startswith("课堂一 伪造日志")
+    assert sanitized.endswith("…")
+    assert len(sanitized) == 21

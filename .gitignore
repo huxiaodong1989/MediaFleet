@@ -186,7 +186,7 @@ credentials/
 # Downloaded images and model artifacts
 docker-images/*
 resource/models/
-models/
+/models/
 *.pt
 *.pth
 *.onnx

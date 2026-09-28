@@ -8,6 +8,7 @@ from hashlib import sha256
 import json
 import logging
 from threading import Event
+from time import perf_counter
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
@@ -20,11 +21,13 @@ from media_platform.contracts.content_evaluation import (
 from media_platform.contracts.task import TaskDispatchMessage
 from services.content_analysis.infrastructure.clients import (
     BehaviorAnalysisClient,
+    BehaviorAnalysisResult,
     EvaluationLlmClient,
     ProgressCallbackClient,
     SubtitleClient,
     safe_url,
 )
+from services.content_analysis.application.log_sanitizer import sanitize_log_value
 from services.content_analysis.infrastructure.file_preprocessor import (
     EvaluationFilePreprocessor,
 )
@@ -160,6 +163,11 @@ class ClassEvaluationWorkflow:
         step: PromptStepDefinition,
         analysis_content: str,
         resolved_prompt: str,
+        *,
+        task_id: str,
+        business_task_id: str,
+        step_position: int,
+        total_steps: int,
     ) -> tuple[dict[str, Any], dict[str, int]]:
         last_error: Exception | None = None
         for attempt in range(self.llm_max_retries):
@@ -173,13 +181,42 @@ class ClassEvaluationWorkflow:
                 )
             except Exception as exc:
                 last_error = exc
-                if attempt + 1 < self.llm_max_retries:
+                will_retry = attempt + 1 < self.llm_max_retries
+                LOGGER.warning(
+                    "AI评课步骤模型调用失败: task_id=%s, business_task_id=%s, "
+                    "step=%s/%s, step_code=%s, model=%s, model_attempt=%s/%s, "
+                    "will_retry=%s, error_type=%s, error=%s",
+                    task_id,
+                    sanitize_log_value(business_task_id),
+                    step_position,
+                    total_steps,
+                    step.code,
+                    sanitize_log_value(step.model),
+                    attempt + 1,
+                    self.llm_max_retries,
+                    will_retry,
+                    type(exc).__name__,
+                    sanitize_log_value(exc, max_length=500),
+                )
+                if will_retry:
                     await asyncio.sleep(2**attempt)
         raise RuntimeError(f"步骤 {step.code} 模型调用失败") from last_error
 
     async def execute(self, message: TaskDispatchMessage, execution_generation: int, lease_lost: Event) -> EvaluationOutcome:
+        workflow_started_at = perf_counter()
         request = ClassEvaluationRequest.model_validate(message.params)
         business_task_id = message.business_task_id or request.task_id
+        LOGGER.info(
+            "AI评课工作流初始化: task_id=%s, business_task_id=%s, classroom_id=%s, "
+            "course_name=%s, ai_form_id=%s, school_code=%s, generation=%s",
+            message.task_id,
+            sanitize_log_value(business_task_id),
+            sanitize_log_value(request.classroom_id),
+            sanitize_log_value(request.evaluation_form.course_name),
+            sanitize_log_value(request.evaluation_form.ai_form_id),
+            sanitize_log_value(message.school_code),
+            execution_generation,
+        )
         self._check_lease(lease_lost)
 
         with self.session_factory() as session:
@@ -190,14 +227,61 @@ class ClassEvaluationWorkflow:
             prompt_bundle_id = prompt_row.id
             prompt_version = prompt_row.version
 
+        LOGGER.info(
+            "AI评课提示词版本已锁定: task_id=%s, business_task_id=%s, "
+            "prompt_version=%s, prompt_bundle_id=%s, step_count=%s",
+            message.task_id,
+            sanitize_log_value(business_task_id),
+            prompt_version,
+            prompt_bundle_id,
+            len(prompt_bundle.steps),
+        )
+
+        material_started_at = perf_counter()
+        LOGGER.info(
+            "AI评课材料准备开始: task_id=%s, business_task_id=%s, "
+            "classroom_id=%s, file_preprocessing=%s",
+            message.task_id,
+            sanitize_log_value(business_task_id),
+            sanitize_log_value(request.classroom_id),
+            request.enable_file_preprocessing,
+        )
         subtitle_task = self.subtitle_client.download(str(request.subtitle_url))
         behavior_task = self.behavior_client.get(classroom_id=request.classroom_id, tenant_id=request.tenant_id)
-        subtitle, behavior = await asyncio.gather(subtitle_task, behavior_task)
+        subtitle, behavior_result = await asyncio.gather(
+            subtitle_task,
+            behavior_task,
+        )
+        if not isinstance(behavior_result, BehaviorAnalysisResult):
+            raise RuntimeError("行为分析客户端返回了无效结果类型")
+        behavior = behavior_result.data
+        missing_inputs = [] if behavior_result.available else ["behaviorAnalysis"]
+        if not behavior_result.available:
+            LOGGER.warning(
+                "AI评课行为数据不可用，将以降级模式继续: task_id=%s, "
+                "business_task_id=%s, classroom_id=%s, reason=%s",
+                message.task_id,
+                sanitize_log_value(business_task_id),
+                sanitize_log_value(request.classroom_id),
+                sanitize_log_value(behavior_result.missing_reason),
+            )
         files = await self._prepare_files(request)
         analysis_content = self._analysis_content(request, subtitle=subtitle, behavior=behavior, files=files)
         material_digest = self._digest({"subtitle": subtitle, "behavior": behavior, "files": files, "form": request.evaluation_form.model_dump(mode="json")})
         model_version = ",".join(sorted({step.model for step in prompt_bundle.steps}))
         operator = message.source or "content-analysis"
+        LOGGER.info(
+            "AI评课材料准备完成: task_id=%s, business_task_id=%s, "
+            "subtitle_chars=%s, behavior_available=%s, attachment_count=%s, "
+            "model_version=%s, duration_ms=%s",
+            message.task_id,
+            sanitize_log_value(business_task_id),
+            len(subtitle),
+            behavior is not None,
+            len(files),
+            sanitize_log_value(model_version),
+            round((perf_counter() - material_started_at) * 1000),
+        )
 
         with self.session_factory() as session:
             with session.begin():
@@ -216,9 +300,15 @@ class ClassEvaluationWorkflow:
 
         aggregate: dict[str, Any] = {}
         token_steps: list[dict[str, Any]] = []
+        successful_steps = 0
+        reused_steps = 0
+        failed_steps = 0
+        failed_step_codes: list[str] = []
         sorted_steps = sorted(prompt_bundle.steps, key=lambda item: item.order)
         total_steps = len(sorted_steps)
         for index, step in enumerate(sorted_steps):
+            step_position = index + 1
+            step_started_at = perf_counter()
             self._check_lease(lease_lost)
             resolved_prompt = self._resolve_prompt(step, request.metadata)
             step_input_digest = self._digest({"materials": material_digest, "prompt": resolved_prompt, "user": step.user_prompt, "model": step.model})
@@ -254,6 +344,21 @@ class ClassEvaluationWorkflow:
                             )
                             if not reused:
                                 raise LeaseLostError("复用评课步骤时执行代次已经变化")
+                    LOGGER.info(
+                        "AI评课步骤复用完成: task_id=%s, business_task_id=%s, "
+                        "classroom_id=%s, step=%s/%s, step_code=%s, step_name=%s, "
+                        "progress=%.1f%%, duration_ms=%s",
+                        message.task_id,
+                        sanitize_log_value(business_task_id),
+                        sanitize_log_value(request.classroom_id),
+                        step_position,
+                        total_steps,
+                        step.code,
+                        sanitize_log_value(step.name),
+                        progress,
+                        round((perf_counter() - step_started_at) * 1000),
+                    )
+                    reused_steps += 1
                     continue
 
             with self.session_factory() as session:
@@ -269,11 +374,28 @@ class ClassEvaluationWorkflow:
                         school_code=message.school_code,
                         operator=operator,
                     )
+            LOGGER.info(
+                "AI评课步骤开始: task_id=%s, business_task_id=%s, classroom_id=%s, "
+                "step=%s/%s, step_code=%s, step_name=%s, model=%s, critical=%s",
+                message.task_id,
+                sanitize_log_value(business_task_id),
+                sanitize_log_value(request.classroom_id),
+                step_position,
+                total_steps,
+                step.code,
+                sanitize_log_value(step.name),
+                sanitize_log_value(step.model),
+                step.critical,
+            )
             try:
                 result, token_usage = await self._run_step(
                     step,
                     analysis_content,
                     resolved_prompt,
+                    task_id=message.task_id,
+                    business_task_id=business_task_id,
+                    step_position=step_position,
+                    total_steps=total_steps,
                 )
             except Exception as exc:
                 error_result = {"error": str(exc)}
@@ -290,6 +412,25 @@ class ClassEvaluationWorkflow:
                             progress=progress,
                             operator=operator,
                         )
+                LOGGER.error(
+                    "AI评课步骤失败: task_id=%s, business_task_id=%s, classroom_id=%s, "
+                    "step=%s/%s, step_code=%s, step_name=%s, critical=%s, "
+                    "progress=%.1f%%, duration_ms=%s, error_type=%s, error=%s",
+                    message.task_id,
+                    sanitize_log_value(business_task_id),
+                    sanitize_log_value(request.classroom_id),
+                    step_position,
+                    total_steps,
+                    step.code,
+                    sanitize_log_value(step.name),
+                    step.critical,
+                    progress,
+                    round((perf_counter() - step_started_at) * 1000),
+                    type(exc).__name__,
+                    sanitize_log_value(exc, max_length=500),
+                )
+                failed_steps += 1
+                failed_step_codes.append(step.code)
                 if step.critical:
                     raise RuntimeError(f"关键步骤 {step.code} 执行失败") from exc
                 continue
@@ -311,6 +452,24 @@ class ClassEvaluationWorkflow:
                     )
                     if not updated:
                         raise LeaseLostError("评课步骤写回时执行代次已经变化")
+            LOGGER.info(
+                "AI评课步骤完成: task_id=%s, business_task_id=%s, classroom_id=%s, "
+                "step=%s/%s, step_code=%s, step_name=%s, progress=%.1f%%, "
+                "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s, duration_ms=%s",
+                message.task_id,
+                sanitize_log_value(business_task_id),
+                sanitize_log_value(request.classroom_id),
+                step_position,
+                total_steps,
+                step.code,
+                sanitize_log_value(step.name),
+                progress,
+                token_usage.get("prompt_tokens", 0),
+                token_usage.get("completion_tokens", 0),
+                token_usage.get("total_tokens", 0),
+                round((perf_counter() - step_started_at) * 1000),
+            )
+            successful_steps += 1
             progress_payload = {
                 "taskId": business_task_id,
                 "aiFormId": request.evaluation_form.ai_form_id,
@@ -320,7 +479,24 @@ class ClassEvaluationWorkflow:
                 "progress": progress / 100,
                 **result,
             }
-            await self.progress_callback.notify(str(request.callback_url) if request.callback_url else None, progress_payload, request.webhook_token)
+            progress_callback_success = await self.progress_callback.notify(
+                str(request.callback_url) if request.callback_url else None,
+                progress_payload,
+                request.webhook_token,
+            )
+            if request.callback_url:
+                callback_log = LOGGER.info if progress_callback_success else LOGGER.warning
+                callback_log(
+                    "AI评课步骤进度回调%s: task_id=%s, business_task_id=%s, "
+                    "step=%s/%s, step_code=%s, progress=%.1f%%",
+                    "成功" if progress_callback_success else "失败",
+                    message.task_id,
+                    sanitize_log_value(business_task_id),
+                    step_position,
+                    total_steps,
+                    step.code,
+                    progress,
+                )
 
         total_usage = {
             key: sum(int(item["token_usage"].get(key, 0)) for item in token_steps)
@@ -336,6 +512,9 @@ class ClassEvaluationWorkflow:
             "errorMessage": None,
             "promptVersion": prompt_version,
             "tokenUsage": {"total": total_usage, "steps": token_steps},
+            "degraded": bool(missing_inputs or failed_step_codes),
+            "missingInputs": missing_inputs,
+            "failedSteps": failed_step_codes,
         }
         for value in aggregate.values():
             if isinstance(value, dict):
@@ -351,6 +530,25 @@ class ClassEvaluationWorkflow:
                     operator=operator,
                 ):
                     raise LeaseLostError("评课完成写回时执行代次已经变化")
+        LOGGER.info(
+            "AI评课工作流完成: task_id=%s, business_task_id=%s, classroom_id=%s, "
+            "course_name=%s, prompt_version=%s, successful_steps=%s, reused_steps=%s, "
+            "failed_steps=%s, total_steps=%s, "
+            "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s, duration_ms=%s",
+            message.task_id,
+            sanitize_log_value(business_task_id),
+            sanitize_log_value(request.classroom_id),
+            sanitize_log_value(request.evaluation_form.course_name),
+            prompt_version,
+            successful_steps,
+            reused_steps,
+            failed_steps,
+            total_steps,
+            total_usage["prompt_tokens"],
+            total_usage["completion_tokens"],
+            total_usage["total_tokens"],
+            round((perf_counter() - workflow_started_at) * 1000),
+        )
         return EvaluationOutcome(
             result=final_result,
             business_task_id=business_task_id,

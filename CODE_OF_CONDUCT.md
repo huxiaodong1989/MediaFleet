@@ -1,12 +1,8 @@
-# Code of conduct
+# 社区行为准则
 
-MediaFleet contributors are expected to communicate respectfully, review ideas
-on their technical merits, and maintain a harassment-free project environment.
+MediaFleet 参与者应尊重他人，以技术事实评审观点，并共同维护没有骚扰的协作环境。
 
-Unacceptable behavior includes personal attacks, intimidation, discriminatory
-language, deliberate disruption, and publishing another person's private
-information. Maintainers may remove content or restrict participation when
-needed to protect the community.
+不可接受的行为包括人身攻击、恐吓、歧视性表达、故意干扰协作，以及公开他人的私密信息。
+为保护社区，维护者可以删除不当内容或限制相关人员参与。
 
-Report conduct concerns privately to the project maintainers rather than in a
-public issue.
+行为准则问题请私下联系项目维护者，不要在公开 Issue 中披露当事人的隐私信息。

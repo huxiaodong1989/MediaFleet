@@ -21,7 +21,7 @@ from media_platform.infrastructure.database.models import (  # noqa: F401
     RecordingServerModel,
 )
 from media_platform.infrastructure.database.types import PortableJSON
-from services.content_analysis.infrastructure.models import (  # noqa: F401
+from media_platform.infrastructure.database.models import (  # noqa: F401
     ContentEvaluationRecordModel,
     ContentEvaluationStepModel,
 )

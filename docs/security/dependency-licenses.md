@@ -1,35 +1,27 @@
-# Dependency license review
+# 依赖许可证审查
 
-Review date: 2026-09-28
+审查日期：2026-09-28
 
-MediaFleet source code is licensed under MIT. Python packages, external
-runtimes, and downloaded model artifacts keep their own licenses.
+MediaFleet 源代码采用 MIT License。Python 包、外部运行时和下载的模型保留各自许可证。
 
-## Base and development environment
+## 基础与开发环境
 
-The environment produced by `uv sync --frozen` was reviewed with
-`pip-licenses`. Its direct and transitive packages are predominantly MIT,
-BSD, Apache-2.0, MPL-2.0, or Python Software Foundation licensed.
+通过 `uv sync --frozen` 生成的环境已使用 `pip-licenses` 审查。其直接和间接依赖主要采用
+MIT、BSD、Apache-2.0、MPL-2.0 或 Python Software Foundation 许可证。
 
-The notable reciprocal dependency in the base environment is `pycountry`,
-which reports LGPL licensing. Distributors should retain its notices and
-comply with the applicable library redistribution terms. Exact resolved
-versions are recorded in `uv.lock`.
+基础环境中需要注意的互惠许可证依赖是 `pycountry`，其报告为 LGPL。分发者应保留通知并
+遵守对应库的再分发条款。准确解析版本记录在 `uv.lock`。
 
-## Optional and external components
+## 可选与外部组件
 
-- `ultralytics` is offered under AGPL-3.0 or a commercial license. Enabling
-  the object-detection extra requires an explicit deployment licensing
-  decision.
-- FFmpeg licensing depends on the selected binary, codecs, and build flags.
-- ZLMediaKit is an external runtime and retains its own license.
-- FunASR, ModelScope, Transformers, PyTorch, and every downloaded model have
-  separate library and model-card licenses. Model weights are not included in
-  this repository.
-- `dmPython` and `dmsqlalchemy` are optional vendor integrations; review the
-  vendor terms before redistribution.
+- `ultralytics` 提供 AGPL-3.0 或商业许可证。启用对象检测能力前必须完成部署许可证决策。
+- FFmpeg 许可证取决于所选二进制、编解码器和构建参数。
+- ZLMediaKit 是外部运行时，保留自身许可证。
+- FunASR、ModelScope、Transformers、PyTorch 和每个下载模型都有独立的库或模型卡许可证；
+  本仓库不包含模型权重。
+- `dmPython` 和 `dmsqlalchemy` 是可选厂商集成，再分发前应审查厂商条款。
 
-## Reproduce the checks
+## 复现检查
 
 ```bash
 uv sync --frozen
@@ -37,4 +29,4 @@ uvx pip-licenses --python .venv/bin/python --format=markdown --with-urls
 uv run --with pip-audit pip-audit --progress-spinner off
 ```
 
-On Windows, use `.venv/Scripts/python.exe` for the `pip-licenses` command.
+Windows 上将 `pip-licenses` 命令中的 Python 路径替换为 `.venv/Scripts/python.exe`。

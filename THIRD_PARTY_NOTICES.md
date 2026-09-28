@@ -1,21 +1,16 @@
-# Third-party notices
+# 第三方组件说明
 
-MediaFleet source code is distributed under the MIT License. Dependencies,
-external runtimes, downloaded models, and user-supplied assets retain their own
-licenses.
+MediaFleet 源代码采用 MIT License。依赖、外部运行时、下载的模型和用户提供的资产保留
+各自许可证。
 
-Important examples include:
+需要特别注意：
 
-- FFmpeg: license depends on the concrete build and enabled codecs.
-- ZLMediaKit: deployed as an external runtime under its own license.
-- Ultralytics: current open-source releases are AGPL-3.0. Object-detection
-  deployments must comply with that license or use a commercial license.
-- FunASR, ModelScope, Transformers, PyTorch, and individual ASR/model artifacts:
-  library and model licenses must both be reviewed before redistribution.
-- OpenCV and other Python dependencies retain their published licenses.
+- FFmpeg：许可证取决于具体构建、启用的编解码器和链接选项。
+- ZLMediaKit：作为外部运行时部署，遵循其自身许可证。
+- Ultralytics：当前开源版本采用 AGPL-3.0。对象检测部署必须满足该许可证或取得商业许可。
+- FunASR、ModelScope、Transformers、PyTorch 和各个 ASR/AI 模型：库许可证与模型许可证
+  都需要在再分发前分别审查。
+- OpenCV 和其他 Python 依赖保留其发布许可证。
 
-This repository intentionally excludes model weights, proprietary fonts, and
-assets whose redistribution rights have not been established.
-
-See [the dependency license review](docs/security/dependency-licenses.md) for
-the reviewed base environment and optional-component decisions.
+仓库有意排除模型权重、专有字体和无法确认再分发权利的资产。基础环境和可选组件的审查
+结果见[依赖许可证审查](docs/security/dependency-licenses.md)。

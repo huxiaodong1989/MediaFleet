@@ -4,8 +4,14 @@ from sqlalchemy.orm import sessionmaker
 
 from media_platform.application import TaskDispatchService, TaskQueryService
 from media_platform.application.ports import PublishReceipt
-from media_platform.infrastructure.database.models import MediaTaskModel
+from media_platform.infrastructure.database.models import (
+    ContentEvaluationRecordModel,
+    MediaTaskModel,
+)
 from services.control_center.application.admin_service import AdminService
+from services.control_center.application.content_evaluation_query_service import (
+    ContentEvaluationQueryService,
+)
 from services.control_center.main import create_control_center_app
 
 
@@ -19,6 +25,7 @@ class FakeRuntime:
         self.api_key = "test-api-key"
         self.task_service = TaskDispatchService(factory, NoopPublisher())
         self.task_query_service = TaskQueryService(factory)
+        self.content_evaluation_query_service = ContentEvaluationQueryService(factory)
         self.admin_service = AdminService(factory)
 
     async def start(self):
@@ -26,6 +33,11 @@ class FakeRuntime:
 
     async def close(self):
         return None
+
+
+def _create_tables(engine):
+    MediaTaskModel.__table__.create(engine)
+    ContentEvaluationRecordModel.__table__.create(engine)
 
 
 def _payload(**overrides):
@@ -54,7 +66,7 @@ def _payload(**overrides):
 
 def test_class_evaluation_api_is_idempotent_and_queryable(tmp_path):
     engine = sa.create_engine(f"sqlite:///{(tmp_path / 'evaluation-api.db').as_posix()}")
-    MediaTaskModel.__table__.create(engine)
+    _create_tables(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     app = create_control_center_app(lambda: FakeRuntime(factory))
     headers = {"X-API-Key": "test-api-key"}
@@ -94,9 +106,60 @@ def test_class_evaluation_api_is_idempotent_and_queryable(tmp_path):
         engine.dispose()
 
 
+def test_class_evaluation_query_reads_database_step_progress(tmp_path):
+    engine = sa.create_engine(f"sqlite:///{(tmp_path / 'evaluation-progress.db').as_posix()}")
+    _create_tables(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app = create_control_center_app(lambda: FakeRuntime(factory))
+    headers = {"X-API-Key": "test-api-key"}
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/api/v1/tasks/class-evaluation",
+                json=_payload(),
+                headers=headers,
+            ).json()
+            with factory.begin() as session:
+                task = session.get(MediaTaskModel, created["internalTaskId"])
+                task.status = "processing"
+                task.progress = 0
+                session.add(
+                    ContentEvaluationRecordModel(
+                        id="evaluation-record-1",
+                        task_id=task.id,
+                        business_task_id=task.business_task_id,
+                        classroom_id="classroom-1",
+                        status="processing",
+                        current_step="KEYEVENT_ANALYSIS",
+                        progress=45,
+                        execution_generation=1,
+                        request_snapshot={},
+                        result={"CLASSROOM_SUMMARY": {"summary": "已完成"}},
+                        school_code="school-1",
+                        created_by="content-analysis",
+                        updated_by="content-analysis",
+                    )
+                )
+
+            response = client.get(
+                "/api/v1/tasks/class-evaluation/result/business-evaluation-1",
+                params={"school_code": "school-1"},
+                headers=headers,
+            )
+
+        assert response.status_code == 200
+        assert response.json()["progress"] == 0.45
+        assert response.json()["currentStep"] == "KEYEVENT_ANALYSIS"
+        assert response.json()["evaluationResult"] == {
+            "CLASSROOM_SUMMARY": {"summary": "已完成"}
+        }
+    finally:
+        engine.dispose()
+
+
 def test_quest_type_retry_rejects_completed_task(tmp_path):
     engine = sa.create_engine(f"sqlite:///{(tmp_path / 'evaluation-retry.db').as_posix()}")
-    MediaTaskModel.__table__.create(engine)
+    _create_tables(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     app = create_control_center_app(lambda: FakeRuntime(factory))
     headers = {"X-API-Key": "test-api-key"}
@@ -122,7 +185,7 @@ def test_quest_type_retry_rejects_completed_task(tmp_path):
 
 def test_class_evaluation_accepts_legacy_tenant_payload(tmp_path):
     engine = sa.create_engine(f"sqlite:///{(tmp_path / 'evaluation-legacy.db').as_posix()}")
-    MediaTaskModel.__table__.create(engine)
+    _create_tables(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     app = create_control_center_app(lambda: FakeRuntime(factory))
     headers = {"X-API-Key": "test-api-key"}

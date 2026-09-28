@@ -1,3 +1,4 @@
+import sys
 from types import SimpleNamespace
 
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +12,9 @@ from media_platform.contracts.topology import (
 )
 from media_platform.infrastructure.messaging import RabbitMQConsumerConfig
 from services.content_analysis.application import runtime as runtime_module
+from services.content_analysis.infrastructure.task_consumer import (
+    ContentAnalysisTaskConsumer,
+)
 
 
 def test_content_analysis_uses_independent_shared_queue():
@@ -61,3 +65,48 @@ def test_concurrent_bootstrap_reuses_version_created_by_another_instance(monkeyp
 
     assert Repository.attempts == 1
     assert "其他内容分析实例已并发完成提示词初始化" in caplog.text
+
+
+def test_build_content_analysis_runtime_completes_dependency_wiring(monkeypatch):
+    from media_platform.common import config as config_module
+    from media_platform.infrastructure.database import init as database_init_module
+
+    settings = SimpleNamespace(
+        API_KEY="test-api-key",
+        rabbitmq=SimpleNamespace(
+            host="rabbitmq",
+            port=5672,
+            username="guest",
+            password="guest",
+            vhost="/",
+            heartbeat=60,
+            blocked_connection_timeout=300,
+        ),
+    )
+    initialized_with = []
+
+    monkeypatch.setattr(config_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        database_init_module,
+        "init_database",
+        lambda value: initialized_with.append(value),
+    )
+    monkeypatch.setattr(runtime_module, "_ensure_bootstrap_prompt", lambda *_: None)
+    monkeypatch.setitem(
+        sys.modules,
+        "media_platform.infrastructure.database.session",
+        SimpleNamespace(SessionLocal=SimpleNamespace()),
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "EvaluationLlmClient",
+        lambda **_: SimpleNamespace(),
+    )
+    monkeypatch.setenv("CONTENT_ANALYSIS_CONSUMER_ENABLED", "false")
+
+    runtime = runtime_module.build_content_analysis_runtime()
+
+    assert initialized_with == [settings]
+    assert isinstance(runtime.consumer, ContentAnalysisTaskConsumer)
+    assert runtime.worker_id
+    assert runtime.consumer_enabled is False

@@ -15,7 +15,7 @@ from media_platform.infrastructure.database.repositories.content_prompt_bundle i
     PromptBundleRepository,
     prompt_content_hash,
 )
-from services.content_analysis.infrastructure.models import (
+from media_platform.infrastructure.database.models import (
     ContentEvaluationRecordModel,
     ContentEvaluationStepModel,
 )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import json
 import logging
 import re
@@ -18,6 +19,15 @@ LOGGER = logging.getLogger(__name__)
 
 def safe_url(value: str) -> str:
     return sanitize_url(value) or ""
+
+
+def safe_log_value(value: Any, *, max_length: int = 300) -> str:
+    """把外部接口文本压成单行，避免日志注入和超长响应污染日志。"""
+
+    normalized = re.sub(r"[\r\n\t]+", " ", str(value or "")).strip()
+    if len(normalized) <= max_length:
+        return normalized
+    return normalized[:max_length] + "…"
 
 
 class SubtitleClient:
@@ -40,6 +50,18 @@ class SubtitleClient:
         return content
 
 
+@dataclass(frozen=True)
+class BehaviorAnalysisResult:
+    """行为分析输入及不可用原因，供最终结果显式标记降级。"""
+
+    data: dict[str, Any] | None
+    missing_reason: str | None = None
+
+    @property
+    def available(self) -> bool:
+        return self.data is not None
+
+
 class BehaviorAnalysisClient:
     def __init__(self, base_url: str | None, *, timeout_seconds: float = 30):
         self.base_url = (base_url or "").strip()
@@ -57,9 +79,14 @@ class BehaviorAnalysisClient:
                 compressed.append(item)
         return compressed
 
-    async def get(self, *, classroom_id: str, tenant_id: int | None) -> dict[str, Any] | None:
+    async def get(
+        self,
+        *,
+        classroom_id: str,
+        tenant_id: int | None,
+    ) -> BehaviorAnalysisResult:
         if not self.base_url:
-            return None
+            return BehaviorAnalysisResult(data=None, missing_reason="not_configured")
         headers = {"Content-Type": "application/json", "User-Agent": "Content-Analysis-Service/1.0"}
         if tenant_id is not None:
             headers["Tenant-Id"] = str(tenant_id)
@@ -68,19 +95,65 @@ class BehaviorAnalysisClient:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(self.base_url, params={"classroomId": classroom_id}, headers=headers) as response:
                     if response.status == 404:
-                        return None
+                        LOGGER.warning(
+                            "行为分析数据不存在: classroom_id=%s, status=404",
+                            safe_log_value(classroom_id),
+                        )
+                        return BehaviorAnalysisResult(
+                            data=None,
+                            missing_reason="not_found",
+                        )
                     response.raise_for_status()
                     payload = await response.json()
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            LOGGER.warning("行为分析接口暂不可用: classroom_id=%s", classroom_id, exc_info=True)
-            return None
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            LOGGER.warning(
+                "行为分析接口暂不可用: classroom_id=%s, error_type=%s, error=%s",
+                safe_log_value(classroom_id),
+                type(exc).__name__,
+                safe_log_value(exc),
+            )
+            return BehaviorAnalysisResult(
+                data=None,
+                missing_reason="request_failed",
+            )
+        if not isinstance(payload, dict):
+            LOGGER.warning(
+                "行为分析接口响应格式无效: classroom_id=%s, payload_type=%s",
+                safe_log_value(classroom_id),
+                type(payload).__name__,
+            )
+            return BehaviorAnalysisResult(
+                data=None,
+                missing_reason="invalid_response",
+            )
         if payload.get("code") not in (0, 200):
-            LOGGER.warning("行为分析接口返回业务错误: classroom_id=%s", classroom_id)
-            return None
+            LOGGER.warning(
+                "行为分析接口返回业务错误: classroom_id=%s, code=%s, message=%s",
+                safe_log_value(classroom_id),
+                safe_log_value(payload.get("code")),
+                safe_log_value(payload.get("message") or payload.get("msg")),
+            )
+            return BehaviorAnalysisResult(
+                data=None,
+                missing_reason="business_error",
+            )
         data = payload.get("data")
         if not isinstance(data, dict):
-            return None
-        return {key: self._compress_time_series(value) for key, value in data.items()}
+            LOGGER.warning(
+                "行为分析接口数据格式无效: classroom_id=%s, data_type=%s",
+                safe_log_value(classroom_id),
+                type(data).__name__,
+            )
+            return BehaviorAnalysisResult(
+                data=None,
+                missing_reason="invalid_data",
+            )
+        return BehaviorAnalysisResult(
+            data={
+                key: self._compress_time_series(value)
+                for key, value in data.items()
+            }
+        )
 
 
 class EvaluationLlmClient:
@@ -151,6 +224,7 @@ class ProgressCallbackClient:
 
 __all__ = [
     "BehaviorAnalysisClient",
+    "BehaviorAnalysisResult",
     "EvaluationLlmClient",
     "ProgressCallbackClient",
     "SubtitleClient",

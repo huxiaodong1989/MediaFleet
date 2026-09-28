@@ -21,6 +21,9 @@ from services.control_center.application.recording_server_service import (
     RecordingServerService,
 )
 from services.control_center.application.admin_service import AdminService
+from services.control_center.application.content_evaluation_query_service import (
+    ContentEvaluationQueryService,
+)
 
 
 X_API_KEY = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -167,6 +170,18 @@ def get_content_prompt_service(request: Request) -> PromptManagementService:
     return service
 
 
+def get_content_evaluation_query_service(
+    request: Request,
+) -> ContentEvaluationQueryService:
+    service = getattr(_get_runtime(request), "content_evaluation_query_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI评课进度查询服务尚未初始化",
+        )
+    return service
+
+
 __all__ = [
     "get_node_heartbeat_service",
     "get_node_selection_service",
@@ -174,6 +189,7 @@ __all__ = [
     "get_recording_task_state_service",
     "get_recording_server_service",
     "get_admin_service",
+    "get_content_evaluation_query_service",
     "get_content_prompt_service",
     "get_stream_binding_service",
     "get_task_dispatch_service",
