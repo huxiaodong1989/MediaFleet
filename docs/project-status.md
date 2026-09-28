@@ -11,7 +11,8 @@ MediaFleet 0.1.0 public baseline is ready for a new GitHub repository.
 - Renamed the project, services, images, database defaults, and physical
   tables to MediaFleet-neutral identifiers.
 - Added MIT licensing, public contribution/security documents, architecture,
-  deployment guidance, roadmap, and dependency-license notes.
+  deployment guidance, roadmap, dependency-license notes, and bilingual
+  English/Chinese project landing pages.
 - Removed populated environment files, private pipelines, internal logs and
   documents, paused private integrations, proprietary binary assets, model
   weights, and unused legacy implementations.

@@ -1,5 +1,7 @@
 # MediaFleet
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 MediaFleet is a distributed media orchestration, recording, and processing
 platform. It coordinates multiple control-plane instances, ZLMediaKit-backed
 recording units, horizontally scalable media workers, and optional AI analysis
