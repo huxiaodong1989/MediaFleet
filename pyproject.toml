@@ -45,9 +45,6 @@ dependencies = [
     "minio>=7.1.0",
     "cos-python-sdk-v5",
 
-    # 拉流地址解析仍被原业务 API 使用；FFmpeg 与模型依赖放入服务独立 extra。
-    "streamlink>=8.4.0",
-
     # 数据库相关
     "SQLAlchemy[asyncio]>=2.0.20",
     "pymysql>=1.1.0",

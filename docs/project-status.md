@@ -16,6 +16,8 @@ MediaFleet 0.1.0 public baseline is ready for a new GitHub repository.
 - Removed populated environment files, private pipelines, internal logs and
   documents, paused private integrations, proprietary binary assets, model
   weights, and unused legacy implementations.
+- Removed the discontinued live-platform recording integration and its unused
+  dependency chain.
 - Replaced the historical upgrade chain with the single clean Alembic baseline
   `20260928_0001` for empty public deployments.
 - Removed embedded credentials and environment-specific endpoints. Logs now
