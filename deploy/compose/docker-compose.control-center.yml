@@ -1,0 +1,36 @@
+name: mediafleet-control-center
+
+services:
+  control-center:
+    image: ${CONTROL_CENTER_IMAGE:-mediafleet-control-center:stable}
+    container_name: mediafleet-control-center
+    env_file:
+      - ${CONTROL_CENTER_ENV_FILE:-../../.env}
+    environment:
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8008"
+      SERVICE_DOTENV_ENABLED: "false"
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-host.docker.internal}
+      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      TZ: ${TZ:-Asia/Shanghai}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+    ports:
+      - "${CONTROL_CENTER_HOST_IP:-127.0.0.1}:${CONTROL_CENTER_PORT:-8008}:8008"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${HOST_LOG_PATH:-/opt/mediafleet/logs}/control-center:/app/logs
+    restart: unless-stopped
+    networks:
+      - media-platform-network
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  media-platform-network:
+    driver: bridge

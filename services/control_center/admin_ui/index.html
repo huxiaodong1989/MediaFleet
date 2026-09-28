@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#182127" />
+    <title>媒体调度中心 · 运维后台</title>
+    <link rel="stylesheet" href="/admin/styles.css?v=20260924-2" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-lockup">
+          <div class="brand-mark"><span></span><span></span><span></span></div>
+          <div>
+            <div class="brand-name">MEDIA<br />CONTROL</div>
+            <div class="brand-caption">OPERATIONS CONSOLE</div>
+          </div>
+        </div>
+
+        <div class="rail-label">工作区</div>
+        <nav class="nav-list" aria-label="后台导航">
+          <button class="nav-item active" data-view="overview">
+            <span class="nav-icon">◒</span><span>运行总览</span><span class="nav-arrow">↗</span>
+          </button>
+          <button class="nav-item" data-view="tasks">
+            <span class="nav-icon">≡</span><span>任务中心</span>
+          </button>
+          <button class="nav-item" data-view="nodes">
+            <span class="nav-icon">⌘</span><span>节点资源</span>
+          </button>
+          <button class="nav-item" data-view="bindings">
+            <span class="nav-icon">◉</span><span>流绑定</span>
+          </button>
+          <button class="nav-item" data-view="prompts">
+            <span class="nav-icon">✦</span><span>AI评课提示词</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="system-pulse"><i></i><span>调用中心在线</span></div>
+          <div class="sidebar-version">ADMIN UI · PHASE 01–02</div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="breadcrumb"><span>媒体平台</span><b>/</b><strong id="breadcrumb-title">运行总览</strong></div>
+          <div class="topbar-actions">
+            <label class="api-key-field" title="管理后台接口使用 X-API-Key 认证">
+              <span>API KEY</span>
+              <input id="api-key" type="password" placeholder="输入内部 API Key" autocomplete="off" />
+              <button id="save-api-key" class="icon-button" type="button" aria-label="保存 API Key">↵</button>
+            </label>
+            <span class="last-sync" id="last-sync">尚未同步</span>
+            <button id="refresh-all" class="refresh-button" type="button"><span>↻</span>刷新</button>
+          </div>
+        </header>
+
+        <div id="notice" class="notice" role="status" aria-live="polite"></div>
+
+        <section id="view-overview" class="view active-view" aria-labelledby="overview-heading">
+          <div class="view-heading">
+            <div>
+              <p class="eyebrow">LIVE OPERATIONS / <span id="overview-date"></span></p>
+              <h1 id="overview-heading">运行态势</h1>
+              <p class="heading-note">从任务、节点和队列三个切面，快速判断当前媒体链路是否健康。</p>
+            </div>
+            <div class="health-chip"><i></i><span>数据源正常</span><small>MySQL · RabbitMQ</small></div>
+          </div>
+
+          <div class="metric-strip" id="metrics">
+            <article class="metric metric-dark"><span class="metric-label">活动任务</span><strong id="metric-active">—</strong><small>processing / post-processing</small></article>
+            <article class="metric"><span class="metric-label">在线节点</span><strong id="metric-online">—</strong><small id="metric-online-note">含 recorder 与 worker</small></article>
+            <article class="metric"><span class="metric-label">活跃绑定</span><strong id="metric-bindings">—</strong><small>摄像头与桌面资源</small></article>
+            <article class="metric metric-accent"><span class="metric-label">队列积压</span><strong id="metric-queue">—</strong><small>共享媒体任务队列</small></article>
+          </div>
+
+          <div class="overview-grid">
+            <section class="surface status-surface">
+              <div class="surface-heading"><div><p class="eyebrow">TASK DISTRIBUTION</p><h2>任务状态分布</h2></div><span class="surface-meta" id="task-total">— 条任务</span></div>
+              <div id="task-status-chart" class="bar-chart empty-state">正在读取任务状态…</div>
+            </section>
+            <section class="surface node-surface">
+              <div class="surface-heading"><div><p class="eyebrow">NODE HEALTH</p><h2>节点健康</h2></div><button class="text-link" data-go="nodes">查看全部 ↗</button></div>
+              <div id="node-health-list" class="node-health-list empty-state">正在读取节点状态…</div>
+            </section>
+          </div>
+
+          <section class="surface queue-surface">
+            <div class="surface-heading"><div><p class="eyebrow">RABBITMQ SNAPSHOT</p><h2>队列快照</h2></div><span class="surface-meta" id="queue-updated">—</span></div>
+            <div id="queue-table" class="queue-table empty-state">正在读取队列…</div>
+          </section>
+        </section>
+
+        <section id="view-tasks" class="view" aria-labelledby="tasks-heading">
+          <div class="view-heading compact-heading"><div><p class="eyebrow">TASK OPERATIONS</p><h1 id="tasks-heading">任务中心</h1><p class="heading-note">按时间、状态和执行节点定位任务，必要时执行重试或补发回调。</p></div></div>
+          <form id="task-filters" class="filter-bar">
+            <label><span>任务类型</span><input name="task_type" placeholder="如 video.cover.extract" /></label>
+            <label><span>状态</span><select name="status"><option value="">全部状态</option><option value="pending">pending</option><option value="processing">processing</option><option value="post_processing">post_processing</option><option value="completed">completed</option><option value="failed">failed</option><option value="cancelled">cancelled</option></select></label>
+            <label><span>执行节点</span><input name="node_id" placeholder="node_id" /></label>
+            <label><span>学校码</span><input name="school_code" placeholder="可选" /></label>
+            <label><span>开始时间</span><input name="created_from" type="datetime-local" /></label>
+            <label><span>结束时间</span><input name="created_to" type="datetime-local" /></label>
+            <button class="primary-button" type="submit">查询任务</button>
+          </form>
+          <section class="surface table-surface"><div class="surface-heading"><div><p class="eyebrow">TASK LIST</p><h2>任务记录</h2></div><span class="surface-meta" id="task-result-count">—</span></div><div id="tasks-table" class="data-table-wrap empty-state">请输入条件后查询。</div><div id="tasks-pagination" class="pagination"></div></section>
+        </section>
+
+        <section id="view-nodes" class="view" aria-labelledby="nodes-heading">
+          <div class="view-heading compact-heading"><div><p class="eyebrow">CAPACITY & HEALTH</p><h1 id="nodes-heading">节点资源</h1><p class="heading-note">查看心跳、就绪状态、绑定数量和 Worker 当前处理负载。</p></div></div>
+          <section class="surface table-surface"><div class="surface-heading"><div><p class="eyebrow">NODE INVENTORY</p><h2>节点清单</h2></div><span class="surface-meta" id="node-result-count">—</span></div><div id="nodes-table" class="data-table-wrap empty-state">正在读取节点…</div><div id="nodes-pagination" class="pagination"></div></section>
+        </section>
+
+        <section id="view-bindings" class="view" aria-labelledby="bindings-heading">
+          <div class="view-heading compact-heading"><div><p class="eyebrow">RESOURCE ROUTING</p><h1 id="bindings-heading">流绑定</h1><p class="heading-note">检查摄像头、桌面资源与 ZL/录制节点的粘性绑定关系。</p></div></div>
+          <form id="binding-filters" class="filter-bar compact-filter">
+            <label><span>节点 ID</span><input name="node_id" placeholder="可选" /></label>
+            <label><span>绑定状态</span><select name="status"><option value="">全部状态</option><option value="ACTIVE">ACTIVE</option><option value="RELEASED">RELEASED</option></select></label>
+            <label><span>资源类型</span><select name="resource_type"><option value="">全部资源</option><option value="CAMERA">CAMERA</option><option value="DESKTOP">DESKTOP</option></select></label>
+            <label><span>空间 ID</span><input name="space_id" placeholder="可选" /></label>
+            <button class="primary-button" type="submit">查询绑定</button>
+          </form>
+          <section class="surface table-surface"><div class="surface-heading"><div><p class="eyebrow">BINDING MAP</p><h2>绑定关系</h2></div><span class="surface-meta" id="binding-result-count">—</span></div><div id="bindings-table" class="data-table-wrap empty-state">请输入条件后查询。</div><div id="bindings-pagination" class="pagination"></div></section>
+        </section>
+
+        <section id="view-prompts" class="view" aria-labelledby="prompts-heading">
+          <div class="view-heading compact-heading"><div><p class="eyebrow">CONTENT ANALYSIS</p><h1 id="prompts-heading">AI评课提示词</h1><p class="heading-note">提示词按整套版本管理；已发布版本不可直接修改，可复制为草稿后再发布，历史版本可重新发布实现回滚。</p></div></div>
+          <form id="prompt-filters" class="filter-bar prompt-filter">
+            <label><span>学校码</span><input name="school_code" value="GLOBAL" /></label>
+            <label><span>修改人</span><input name="operator" value="admin-console" /></label>
+            <button class="primary-button" type="submit">加载版本</button>
+          </form>
+          <div class="prompt-layout">
+            <section class="surface table-surface"><div class="surface-heading"><div><p class="eyebrow">VERSION HISTORY</p><h2>版本记录</h2></div><span class="surface-meta" id="prompt-result-count">—</span></div><div id="prompts-table" class="data-table-wrap empty-state">正在读取提示词版本…</div></section>
+            <section class="surface prompt-editor">
+              <div class="surface-heading"><div><p class="eyebrow">BUNDLE EDITOR</p><h2 id="prompt-editor-title">选择版本查看</h2></div><span id="prompt-editor-mode" class="surface-meta">—</span></div>
+              <div id="prompt-editor-empty" class="empty-message">请从左侧选择一个版本。</div>
+              <div id="prompt-editor-fields" hidden>
+                <section class="prompt-subtitle-section">
+                  <div class="prompt-section-heading"><div><strong>字幕整理提示词</strong><span>在八步评课前统一整理字幕文本</span></div></div>
+                  <textarea id="prompt-subtitle" class="prompt-textarea prompt-textarea-compact" spellcheck="false" placeholder="字幕整理提示词"></textarea>
+                </section>
+                <div class="prompt-step-heading"><div><strong>八步评课提示词</strong><span>选择步骤后单独查看或替换，不需要直接编辑整包 JSON</span></div></div>
+                <div id="prompt-step-tabs" class="prompt-step-tabs" role="tablist" aria-label="评课步骤"></div>
+                <section class="prompt-step-panel">
+                  <div class="prompt-step-meta">
+                    <label><span>步骤名称</span><input id="prompt-step-name" /></label>
+                    <label><span>步骤代码</span><input id="prompt-step-code" readonly /></label>
+                    <label><span>模型</span><input id="prompt-step-model" /></label>
+                    <label><span>温度</span><input id="prompt-step-temperature" type="number" min="0" max="2" step="0.1" /></label>
+                    <label><span>最大 Token</span><input id="prompt-step-max-tokens" type="number" min="1" step="1" /></label>
+                  </div>
+                  <label class="prompt-field"><span>系统提示词</span><textarea id="prompt-step-system" class="prompt-textarea" spellcheck="false"></textarea></label>
+                  <label class="prompt-field"><span>用户提示词</span><textarea id="prompt-step-user" class="prompt-textarea prompt-textarea-compact" spellcheck="false"></textarea></label>
+                  <div id="prompt-step-flags" class="prompt-step-flags"></div>
+                </section>
+              </div>
+              <div class="prompt-actions"><button id="prompt-new" class="table-action" type="button" disabled>复制当前版本为草稿</button><button id="prompt-save" class="table-action" type="button" disabled>保存草稿</button><button id="prompt-publish" class="primary-button" type="button" disabled>发布 / 回滚</button></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/admin/app.js?v=20260924-2" defer></script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+name: mediafleet-worker
+
+services:
+  media-worker:
+    image: ${MEDIA_WORKER_IMAGE:-mediafleet-worker:stable}
+    container_name: mediafleet-worker
+    env_file:
+      - ${MEDIA_WORKER_ENV_FILE:-../../.env}
+    environment:
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8009"
+      SERVICE_DOTENV_ENABLED: "false"
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-host.docker.internal}
+      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL: ${CONTROL_CENTER_INTERNAL_URL:-http://host.docker.internal:8008}
+      MEDIA_NODE_AGENT_URL: ${MEDIA_WORKER_AGENT_URL:-http://host.docker.internal:8009}
+      TZ: ${TZ:-Asia/Shanghai}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${MEDIA_WORKER_HOST_IP:-127.0.0.1}:${MEDIA_WORKER_PORT:-8009}:8009"
+    volumes:
+      - ${HOST_LOG_PATH:-/opt/mediafleet/logs}/media-worker:/app/logs
+      - ${HOST_TEMP_PATH:-/opt/mediafleet/temp}/media-worker:/tmp/media-processing
+      - mediafleet_worker_data:/app/data
+      - mediafleet_worker_model_cache:/root/.cache/modelscope
+    restart: unless-stopped
+    networks:
+      - media-platform-network
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8009/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+
+volumes:
+  mediafleet_worker_data:
+  mediafleet_worker_model_cache:
+
+networks:
+  media-platform-network:
+    driver: bridge

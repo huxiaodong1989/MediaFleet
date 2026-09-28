@@ -1,0 +1,95 @@
+name: mediafleet-control-center
+
+# 调用中心独立 Stack。所有变量直接写在 environment，不依赖其他 Compose 或 env_file。
+services:
+  control-center:
+    image: ${CONTROL_CENTER_IMAGE:-mediafleet-control-center:stable}
+    container_name: ${CONTROL_CENTER_CONTAINER_NAME:-mediafleet-control-center}
+    environment:
+      # ---------- 服务基础配置 ----------
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8008"
+      # Portainer 配置全部来自本 environment，不读取镜像内 .env。
+      SERVICE_DOTENV_ENABLED: "false"
+      # 生产建议 INFO；临时排障可改 DEBUG，排障结束后恢复。
+      SERVICE_LOG_LEVEL: ${CONTROL_CENTER_LOG_LEVEL:-INFO}
+      # RTC、节点心跳和管理接口使用的内部认证密钥，各服务必须保持一致。
+      API_KEY: ${CONTROL_CENTER_API_KEY:-change-this-api-key}
+      APP_ENV: ${APP_ENV:-production}
+      TZ: ${TZ:-Asia/Shanghai}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+
+      # ---------- MySQL：节点、绑定、任务和产物的事实来源 ----------
+      DB_TYPE: ${DB_TYPE:-mysql}
+      DB_HOST: ${DB_HOST:-mysql.example.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-mediafleet}
+      DB_PASSWORD: ${DB_PASSWORD:-change-this-db-password}
+      DB_NAME: ${DB_NAME:-mediafleet}
+      DB_CHARSET: ${DB_CHARSET:-utf8mb4}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      # 以下三个开关只适合首次部署/受控升级。稳定生产环境建议改为 false，迁移单独执行。
+      DB_AUTO_INIT: ${DB_AUTO_INIT:-true}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-true}
+      DB_INIT_CREATE_SCHEMA: ${DB_INIT_CREATE_SCHEMA:-true}
+      DB_DM_MYSQL_COMPAT: ${DB_DM_MYSQL_COMPAT:-true}
+
+      # ---------- RabbitMQ：任务和定向录制命令可靠投递 ----------
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq.example.internal}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-media_service}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-change-this-rabbitmq-password}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_HEARTBEAT: ${RABBITMQ_HEARTBEAT:-60}
+      RABBITMQ_BLOCKED_TIMEOUT: ${RABBITMQ_BLOCKED_TIMEOUT:-300}
+      RABBITMQ_MAX_TASKS: ${RABBITMQ_MAX_TASKS:-1}
+      RABBITMQ_RECORD_RESULT_EXCHANGE: ${RABBITMQ_RECORD_RESULT_EXCHANGE:-mediafleet.callback.fanout.exchange}
+      RABBITMQ_RECORD_RESULT_TTL: ${RABBITMQ_RECORD_RESULT_TTL:-36000000}
+      RABBITMQ_WORKER_RESULT_EXCHANGE: ${RABBITMQ_WORKER_RESULT_EXCHANGE:-mediafleet.worker.exchange}
+      RABBITMQ_WORKER_RESULT_TTL: ${RABBITMQ_WORKER_RESULT_TTL:-36000000}
+
+      # ---------- 通用媒体任务发布循环 ----------
+      # 多个调用中心实例必须使用不同 INSTANCE_ID，避免领取锁身份混淆。
+      CONTROL_CENTER_INSTANCE_ID: ${CONTROL_CENTER_INSTANCE_ID:-control-center-01}
+      # 每轮从 MySQL 领取并发布的任务数量；不是 media-worker 的处理并发。
+      TASK_DISPATCH_BATCH_SIZE: ${TASK_DISPATCH_BATCH_SIZE:-20}
+      TASK_DISPATCH_POLL_INTERVAL_SECONDS: ${TASK_DISPATCH_POLL_INTERVAL_SECONDS:-1}
+      # 发布实例异常退出后，超过该时间允许其他调用中心重新领取。
+      TASK_DISPATCH_LOCK_TIMEOUT_SECONDS: ${TASK_DISPATCH_LOCK_TIMEOUT_SECONDS:-300}
+      TASK_DISPATCH_ERROR_BACKOFF_SECONDS: ${TASK_DISPATCH_ERROR_BACKOFF_SECONDS:-5}
+
+      # ---------- 定向录制命令发布循环 ----------
+      RECORDING_COMMAND_DISPATCH_BATCH_SIZE: ${RECORDING_COMMAND_DISPATCH_BATCH_SIZE:-20}
+      RECORDING_COMMAND_DISPATCH_POLL_INTERVAL_SECONDS: ${RECORDING_COMMAND_DISPATCH_POLL_INTERVAL_SECONDS:-1}
+      RECORDING_COMMAND_DISPATCH_LOCK_TIMEOUT_SECONDS: ${RECORDING_COMMAND_DISPATCH_LOCK_TIMEOUT_SECONDS:-10}
+      RECORDING_COMMAND_DISPATCH_ERROR_BACKOFF_SECONDS: ${RECORDING_COMMAND_DISPATCH_ERROR_BACKOFF_SECONDS:-5}
+      # 录制容量预约前后安全余量，单位秒；防止紧邻计划互相截断。
+      RECORDING_RESERVATION_MARGIN_SECONDS: ${RECORDING_RESERVATION_MARGIN_SECONDS:-5}
+
+      # ---------- 历史任务事件消费者 ----------
+      # 当前 Worker/recorder 直接写 MySQL 并执行回调，正常部署保持 false。
+      CONTROL_CENTER_EVENT_CONSUMER_ENABLED: ${CONTROL_CENTER_EVENT_CONSUMER_ENABLED:-false}
+      CONTROL_CENTER_EVENT_QUEUE_NAME: ${CONTROL_CENTER_EVENT_QUEUE_NAME:-control-center.media-events}
+      CONTROL_CENTER_EVENT_ROUTING_KEYS: ${CONTROL_CENTER_EVENT_ROUTING_KEYS:-task.completed,task.failed}
+      CONTROL_CENTER_EVENT_PREFETCH_COUNT: ${CONTROL_CENTER_EVENT_PREFETCH_COUNT:-10}
+      CONTROL_CENTER_EVENT_RETRY_DELAY_MILLISECONDS: ${CONTROL_CENTER_EVENT_RETRY_DELAY_MILLISECONDS:-5000}
+      CONTROL_CENTER_EVENT_MAX_ATTEMPTS: ${CONTROL_CENTER_EVENT_MAX_ATTEMPTS:-3}
+      CONTROL_CENTER_EVENT_RECONNECT_DELAY_SECONDS: ${CONTROL_CENTER_EVENT_RECONNECT_DELAY_SECONDS:-5}
+      CONTROL_CENTER_CALLBACK_TIMEOUT_SECONDS: ${CONTROL_CENTER_CALLBACK_TIMEOUT_SECONDS:-10}
+    ports:
+      - "${CONTROL_CENTER_BIND_IP:-0.0.0.0}:${CONTROL_CENTER_PORT:-8008}:8008"
+    volumes:
+      - ${CONTROL_CENTER_LOG_PATH:-/opt/mediafleet/logs/control-center}:/app/logs
+    restart: unless-stopped
+    networks: [mediafleet-network]
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  mediafleet-network:
+    external: true

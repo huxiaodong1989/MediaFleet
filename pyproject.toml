@@ -1,0 +1,139 @@
+[project]
+name = "mediafleet"
+version = "0.1.0"
+description = "Distributed media orchestration, recording, and processing platform"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10,<3.13"
+keywords = ["media", "recording", "rabbitmq", "zlmediakit", "asr"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    # FastAPI 核心
+    "fastapi>=0.100.0",
+    "uvicorn>=0.15.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.14.2",
+
+    # HTTP 客户端
+    "httpx>=0.24.0",
+    "aiohttp>=3.14.3",
+    "requests>=2.32.5",
+
+    # 基础工具
+    "python-multipart>=0.0.31",
+    "python-dotenv>=0.21.0",
+    "aiofiles>=23.1.0",
+    "psutil>=5.9.5",
+    "PyYAML>=6.0,<7.0",
+
+    # 终端输出
+    "rich",
+
+    # 消息队列和缓存
+    "redis>=4.5.4",
+    "pika>=1.3.0",
+
+    # 旧业务 API 在导入阶段复用存储配置与 URL 组装，三个服务均需安装客户端。
+    "minio>=7.1.0",
+    "cos-python-sdk-v5",
+
+    # 拉流地址解析仍被原业务 API 使用；FFmpeg 与模型依赖放入服务独立 extra。
+    "streamlink>=8.4.0",
+
+    # 数据库相关
+    "SQLAlchemy[asyncio]>=2.0.20",
+    "pymysql>=1.1.0",
+    "cryptography>=50.0.0",
+    "alembic>=1.12.0",
+    "sqlalchemy-utils>=0.41.1",
+    # 注意：移除了 mysqlclient，使用 pymysql 替代（纯 Python 实现，Windows 兼容性更好）
+    "aiomysql>=0.0.21",
+
+]
+
+[project.optional-dependencies]
+# 录制节点只安装录像后处理、对象存储和图像基础依赖，不安装 ASR/YOLO 模型栈。
+recorder-node = [
+    "Pillow>=9.0.0",
+    "numpy>=2.0.0,<2.3.0",
+    "ffmpeg-python>=0.2.0",
+    "moviepy==1.0.3",
+    "opencv-python>=4.12.0",
+]
+
+# 通用媒体 Worker 承载全部离线媒体处理能力，包括 ASR 和 YOLO。
+media-worker = [
+    "Pillow>=9.0.0",
+    "numpy>=2.0.0,<2.3.0",
+    "ffmpeg-python>=0.2.0",
+    "moviepy==1.0.3",
+    "opencv-python>=4.12.0",
+    "librosa",
+    "soundfile",
+    "scikit-learn>=1.3.2",
+    "funasr>=1.1.2",
+    "modelscope==1.32.0",
+    "transformers==5.13.0",
+    "tiktoken>=0.7.0",
+    "peft>=0.11.0",
+    "diffusers>=0.30.0",
+    "torch>=1.13",
+    "torchaudio==2.9.1",
+    "ultralytics>=8.3.235",
+    "supervision>=0.27.0",
+]
+
+# 独立内容分析服务只安装评课编排、文档解析、OCR 和 OpenAI 兼容客户端。
+content-analysis = [
+    "openai>=1.50.0",
+    "PyMuPDF>=1.24.0",
+    "python-docx>=1.1.0",
+    "python-pptx>=1.0.0",
+    "beautifulsoup4>=4.12.0",
+    "pytesseract>=0.3.13",
+    "Pillow>=9.0.0",
+]
+
+dm = [
+    "dmPython>=2.5.22",
+    "dmsqlalchemy>=2.0.12",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+# 默认锁定 CPU wheel，避免 media-worker CPU 镜像意外携带数 GB CUDA 运行库。
+torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ffmpeg-python>=0.2.0",
+]
+
+# 覆盖问题依赖版本（Windows 编译兼容性）
+override-dependencies = [
+    # editdistance 0.8.1 在 Windows + Python 3.13 环境下编译失败
+    # 使用 0.8.0 版本或让 funasr 选择兼容版本
+    "editdistance>=0.6.2,<0.8.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "integration: 需要数据库或其他基础设施的集成测试",
+]

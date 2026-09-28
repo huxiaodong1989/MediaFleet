@@ -1,0 +1,87 @@
+name: mediafleet-worker-gpu
+
+# 多个实例使用同一 RabbitMQ 队列竞争消费，不需要人工设置节点 ID。
+x-media-worker-common: &media-worker-common
+  image: ${MEDIA_WORKER_IMAGE:-mediafleet-worker:gpu}
+  env_file:
+    - ${MEDIA_WORKER_ENV_FILE:-../../.env}
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  networks:
+    - media-platform-network
+  healthcheck:
+    test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8009/health', timeout=5)"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 300s
+
+services:
+  media-worker-gpu-0:
+    <<: *media-worker-common
+    container_name: mediafleet-worker-gpu-0
+    ports:
+      - "${MEDIA_WORKER_GPU_0_PORT:-8009}:8009"
+    environment:
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8009"
+      SERVICE_DOTENV_ENABLED: "false"
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-host.docker.internal}
+      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL: ${CONTROL_CENTER_INTERNAL_URL:-http://host.docker.internal:8008}
+      MEDIA_NODE_AGENT_URL: ${MEDIA_WORKER_GPU_0_AGENT_URL:-http://host.docker.internal:8009}
+      FUNASR_DEVICE: cuda:0
+      NVIDIA_VISIBLE_DEVICES: "0"
+    volumes:
+      - ${HOST_LOG_PATH:-/opt/mediafleet/logs}/media-worker-gpu-0:/app/logs
+      - ${HOST_TEMP_PATH:-/opt/mediafleet/temp}/media-worker-gpu-0:/tmp/media-processing
+      - mediafleet_worker_gpu_0_data:/app/data
+      - mediafleet_worker_gpu_0_model_cache:/root/.cache/modelscope
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+
+  media-worker-gpu-1:
+    <<: *media-worker-common
+    container_name: mediafleet-worker-gpu-1
+    ports:
+      - "${MEDIA_WORKER_GPU_1_PORT:-8011}:8009"
+    environment:
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8009"
+      SERVICE_DOTENV_ENABLED: "false"
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-host.docker.internal}
+      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL: ${CONTROL_CENTER_INTERNAL_URL:-http://host.docker.internal:8008}
+      MEDIA_NODE_AGENT_URL: ${MEDIA_WORKER_GPU_1_AGENT_URL:-http://host.docker.internal:8011}
+      FUNASR_DEVICE: cuda:0
+      NVIDIA_VISIBLE_DEVICES: "1"
+    volumes:
+      - ${HOST_LOG_PATH:-/opt/mediafleet/logs}/media-worker-gpu-1:/app/logs
+      - ${HOST_TEMP_PATH:-/opt/mediafleet/temp}/media-worker-gpu-1:/tmp/media-processing
+      - mediafleet_worker_gpu_1_data:/app/data
+      - mediafleet_worker_gpu_1_model_cache:/root/.cache/modelscope
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+
+volumes:
+  mediafleet_worker_gpu_0_data:
+  mediafleet_worker_gpu_1_data:
+  mediafleet_worker_gpu_0_model_cache:
+  mediafleet_worker_gpu_1_model_cache:
+
+networks:
+  media-platform-network:
+    driver: bridge

@@ -1,0 +1,12 @@
+services:
+  media-worker:
+    image: ${MEDIA_WORKER_IMAGE:-mediafleet-worker:gpu}
+    environment:
+      FUNASR_DEVICE: cuda:0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

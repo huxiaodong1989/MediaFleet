@@ -1,0 +1,119 @@
+[MASTER]
+# 禁用某些不必要的警告
+disable=
+    C0114,  # missing-module-docstring
+    C0115,  # missing-class-docstring
+    C0116,  # missing-function-docstring
+    C0103,  # invalid-name
+    R0903,  # too-few-public-methods
+    R0913,  # too-many-arguments
+    W0621,  # redefined-outer-name
+    W0703,  # broad-except
+    W0612,  # unused-variable
+    W0611,  # unused-import
+
+# 最大行长度
+max-line-length=88
+
+# 忽略的文件和目录
+ignore=CVS,.git,__pycache__,.venv,venv,node_modules
+
+[FORMAT]
+# 最大行长度
+max-line-length=88
+
+# 缩进大小
+indent-size=4
+
+# 缩进字符
+indent-string='    '
+
+[MESSAGES CONTROL]
+# 禁用特定消息
+disable=C0114,C0115,C0116,C0103,R0903,R0913,W0621,W0703,W0612,W0611
+
+[REPORTS]
+# 输出格式
+output-format=text
+
+# 评分
+score=yes
+
+# 统计信息
+reports=yes
+
+[BASIC]
+# 好的变量名正则表达式
+good-names=i,j,k,ex,Run,_,id,db
+
+# 不好的变量名正则表达式
+bad-names=foo,bar,baz,toto,tutu,tata
+
+# 命名风格
+name-group=
+
+# 包含的命名风格
+include-naming-hint=no
+
+# 函数命名正则表达式
+function-naming-style=snake_case
+
+# 变量命名正则表达式
+variable-naming-style=snake_case
+
+# 常量命名正则表达式
+const-naming-style=UPPER_CASE
+
+# 属性命名正则表达式
+attr-naming-style=snake_case
+
+# 参数命名正则表达式
+argument-naming-style=snake_case
+
+# 类命名正则表达式
+class-naming-style=PascalCase
+
+# 类属性命名正则表达式
+class-attribute-naming-style=snake_case
+
+# 内联变量命名正则表达式
+inlinevar-naming-style=snake_case
+
+# 类常量命名正则表达式
+class-const-naming-style=UPPER_CASE
+
+# 函数参数命名正则表达式
+function-param-naming-style=snake_case
+
+# 函数返回值命名正则表达式
+function-return-naming-style=snake_case
+
+# 函数异常命名正则表达式
+function-exception-naming-style=snake_case
+
+[SIMILARITIES]
+# 最小相似行数
+min-similarity-lines=4
+
+# 忽略注释
+ignore-comments=yes
+
+# 忽略文档字符串
+ignore-docstrings=yes
+
+# 忽略导入
+ignore-imports=no
+
+[TYPECHECK]
+# 忽略的模块
+ignored-modules=numpy,tensorflow,torch,cv2,PIL
+
+# 忽略的类
+ignored-classes=SQLObject,SQLAlchemy,scoped_session,sessionmaker
+
+# 忽略的成员
+ignored-members=objects,meta,DoesNotExist,id,pk,save,delete
+
+[MISCELLANEOUS]
+# 注释正则表达式
+notes=

@@ -1,0 +1,193 @@
+name: mediafleet-recorder-node
+
+# 单个 ZLMediaKit 配套的 recorder-node 独立 Stack。
+# ZLM_RECORD_PATH 必须是配套 ZL 的真实 www/record 目录。
+services:
+  recorder-node:
+    image: ${RECORDER_NODE_IMAGE:-mediafleet-recorder-node:stable}
+    container_name: ${RECORDER_NODE_CONTAINER_NAME:-mediafleet-recorder-node}
+    environment:
+      # ---------- 服务基础配置 ----------
+      # 容器内监听地址和端口。通常只修改下方 ports 的宿主机端口，不修改这里。
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8010"
+      # Portainer 部署只读取本 environment，禁止再从镜像内 .env 混入配置。
+      SERVICE_DOTENV_ENABLED: "false"
+      # 日志级别建议生产使用 INFO，排障时临时改为 DEBUG。
+      SERVICE_LOG_LEVEL: ${RECORDER_NODE_LOG_LEVEL:-INFO}
+      # 节点调用控制中心心跳接口使用的内部密钥，必须与控制中心 API_KEY 一致。
+      API_KEY: ${RECORDER_NODE_API_KEY:-change-this-api-key}
+      APP_ENV: ${APP_ENV:-production}
+      TZ: ${TZ:-Asia/Shanghai}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+
+      # ---------- MySQL ----------
+      # recorder-node 直接读写录制任务、产物和恢复状态；生产环境不要开启自动迁移。
+      DB_TYPE: ${DB_TYPE:-mysql}
+      DB_HOST: ${DB_HOST:-mysql.example.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-mediafleet}
+      DB_PASSWORD: ${DB_PASSWORD:-change-this-db-password}
+      DB_NAME: ${DB_NAME:-mediafleet}
+      DB_CHARSET: ${DB_CHARSET:-utf8mb4}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      DB_AUTO_INIT: ${DB_AUTO_INIT:-false}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-false}
+      DB_INIT_CREATE_SCHEMA: ${DB_INIT_CREATE_SCHEMA:-false}
+      # MySQL 5.7/8.x 保持 true；只有切换达梦等数据库时再按兼容方案调整。
+      DB_DM_MYSQL_COMPAT: ${DB_DM_MYSQL_COMPAT:-true}
+
+      # ---------- RabbitMQ ----------
+      # 用于接收定向录制命令并向 RTC 发布录制结果通知。
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq.example.internal}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-media_service}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-change-this-rabbitmq-password}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_HEARTBEAT: ${RABBITMQ_HEARTBEAT:-60}
+      RABBITMQ_BLOCKED_TIMEOUT: ${RABBITMQ_BLOCKED_TIMEOUT:-300}
+      RABBITMQ_MAX_TASKS: ${RABBITMQ_MAX_TASKS:-1}
+      RABBITMQ_RECORD_RESULT_EXCHANGE: ${RABBITMQ_RECORD_RESULT_EXCHANGE:-mediafleet.callback.fanout.exchange}
+      RABBITMQ_RECORD_RESULT_TTL: ${RABBITMQ_RECORD_RESULT_TTL:-36000000}
+      RABBITMQ_WORKER_RESULT_EXCHANGE: ${RABBITMQ_WORKER_RESULT_EXCHANGE:-mediafleet.worker.exchange}
+      RABBITMQ_WORKER_RESULT_TTL: ${RABBITMQ_WORKER_RESULT_TTL:-36000000}
+
+      # ---------- 节点心跳与稳定身份 ----------
+      # 控制中心内部地址；多个 recorder-node 都可以指向同一控制中心入口。
+      MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL: ${MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL:-http://mediafleet-control-center:8008}
+      # 控制中心可访问的本节点地址，用于展示和健康诊断。
+      MEDIA_NODE_AGENT_URL: ${MEDIA_NODE_AGENT_URL:-http://mediafleet-recorder-node:8010}
+      MEDIA_NODE_NAME: ${MEDIA_NODE_NAME:-recorder-node-01}
+      # 调度评分权重，通常保持 100；值越高越倾向被选中。
+      MEDIA_NODE_WEIGHT: ${MEDIA_NODE_WEIGHT:-100}
+      MEDIA_NODE_HEARTBEAT_INTERVAL_SECONDS: ${MEDIA_NODE_HEARTBEAT_INTERVAL_SECONDS:-30}
+      MEDIA_NODE_HEARTBEAT_TIMEOUT_SECONDS: ${MEDIA_NODE_HEARTBEAT_TIMEOUT_SECONDS:-5}
+      # 每台录制服务器必须唯一且跨重启保持不变；不要复制同一编号部署两台机器。
+      RECORDER_NODE_ID: ${RECORDER_NODE_ID:-recorder-node-01}
+      RECORDER_SERVER_ID: ${RECORDER_SERVER_ID:-recording-server-01}
+      # 单节点同时实际录制硬上限。100 表示允许最多 100 路，但仍需磁盘、网络和 ZL 压测证明。
+      RECORDER_NODE_MAX_RECORDINGS: ${RECORDER_NODE_MAX_RECORDINGS:-100}
+      # 可长期绑定的流数量，不是同时录制数；绑定通常可以明显大于录制并发。
+      RECORDER_NODE_MAX_BINDINGS: ${RECORDER_NODE_MAX_BINDINGS:-300}
+      # 可用磁盘低于该值时节点上报 NOT_READY，不再接受新绑定/录制。
+      RECORDER_NODE_MIN_FREE_DISK_GB: ${RECORDER_NODE_MIN_FREE_DISK_GB:-10}
+
+      # ---------- 录制命令消费 ----------
+      # prefetch 只限制同时领取的开始/停止命令数，不限制已经运行的录制路数。
+      RECORDER_NODE_COMMAND_PREFETCH_COUNT: ${RECORDER_NODE_COMMAND_PREFETCH_COUNT:-1}
+      RECORDER_NODE_COMMAND_RETRY_DELAY_MILLISECONDS: ${RECORDER_NODE_COMMAND_RETRY_DELAY_MILLISECONDS:-5000}
+      RECORDER_NODE_COMMAND_MAX_ATTEMPTS: ${RECORDER_NODE_COMMAND_MAX_ATTEMPTS:-3}
+      RECORDER_NODE_COMMAND_RECONNECT_DELAY_SECONDS: ${RECORDER_NODE_COMMAND_RECONNECT_DELAY_SECONDS:-5}
+      RECORDER_NODE_COMMAND_ACCEPT_TIMEOUT_SECONDS: ${RECORDER_NODE_COMMAND_ACCEPT_TIMEOUT_SECONDS:-10}
+
+      # ---------- 配套 ZLMediaKit ----------
+      # ZLM_SERVER_ID 同时作为 Nginx 播放路由段，例如 zlm-01。
+      ZLM_SERVER_ID: ${ZLM_SERVER_ID:-zlm-01}
+      # recorder-node 调用 ZL 管理 API 的内网地址，通常为本机/同服务器 ZL 的 8080 端口。
+      ZLM_API_URL: ${ZLM_API_URL:-http://zlm.example.internal:8080}
+      ZLM_URL: ${ZLM_URL:-http://zlm.example.internal:8080}
+      ZLM_SECRET: ${ZLM_SECRET:-change-this-zlm-secret}
+      # 容器内固定录像目录；宿主机真实目录由 volumes 中 ZLM_RECORD_PATH 映射。
+      ZLM_RECORD_LOCAL_ROOT: /data/zlmediakit/record
+      # 对 ZL 管理 API 的总并发上限，不等于录制路数。
+      ZLM_API_CONCURRENCY: ${ZLM_API_CONCURRENCY:-32}
+      # 录制结束后发现碎片文件的重试次数和间隔，适配文件落盘延迟。
+      ZLM_RECORD_DISCOVERY_ATTEMPTS: ${ZLM_RECORD_DISCOVERY_ATTEMPTS:-3}
+      ZLM_RECORD_DISCOVERY_INTERVAL: ${ZLM_RECORD_DISCOVERY_INTERVAL:-5}
+      # 所有录制任务共享流状态快照；不要按单路任务调得过小。
+      ZLM_STREAM_STATUS_INTERVAL: ${ZLM_STREAM_STATUS_INTERVAL:-10}
+      ZLM_STREAM_STATUS_STALE_GRACE: ${ZLM_STREAM_STATUS_STALE_GRACE:-30}
+      ZLM_STREAM_STATUS_LOG_INTERVAL: ${ZLM_STREAM_STATUS_LOG_INTERVAL:-60}
+      ZLM_RECORD_STATUS_CONCURRENCY: ${ZLM_RECORD_STATUS_CONCURRENCY:-8}
+      ZLM_RECORD_RESTART_INTERVAL: ${ZLM_RECORD_RESTART_INTERVAL:-5}
+      ZLM_STREAM_ABSENCE_CONFIRMATIONS: ${ZLM_STREAM_ABSENCE_CONFIRMATIONS:-3}
+      # RTC 拼接统一播放地址使用；play_host 指向 Nginx 域名/IP，不是单台 ZL 内网 IP。
+      ZLM_PLAY_HOST: ${ZLM_PLAY_HOST:-media.example.com}
+      ZLM_PLAY_PORT: ${ZLM_PLAY_PORT:-443}
+      ZLM_PLAY_PROTOCOL: ${ZLM_PLAY_PROTOCOL:-https}
+      # RTC 直接连接本节点 ZL 时使用的推流/拉流协议端口。
+      ZLM_RTMP_PORT: ${ZLM_RTMP_PORT:-1935}
+      ZLM_RTSP_PORT: ${ZLM_RTSP_PORT:-554}
+
+      # ---------- 录制后处理并发 ----------
+      # 后处理线程总数；其中重 IO/FFmpeg 阶段还受 MEDIA_CONCURRENCY 限制。
+      POST_PROCESSING_MAX_WORKERS: ${POST_PROCESSING_MAX_WORKERS:-3}
+      # 无繁忙降速时，同时执行合并、转码、提取、上传等重任务的数量。
+      POST_PROCESSING_MEDIA_CONCURRENCY: ${POST_PROCESSING_MEDIA_CONCURRENCY:-2}
+      # true：达到阈值后随录制压力线性降低；满载默认仍保留 50% 并发。
+      POST_PROCESSING_IDLE_STRATEGY_ENABLED: ${POST_PROCESSING_IDLE_STRATEGY_ENABLED:-false}
+      # 当前录制数达到该值后开始平滑降并发。
+      POST_PROCESSING_BUSY_RECORDING_THRESHOLD: ${POST_PROCESSING_BUSY_RECORDING_THRESHOLD:-50}
+      POST_PROCESSING_BUSY_MEDIA_PERCENT: ${POST_PROCESSING_BUSY_MEDIA_PERCENT:-50}
+      # 动态计算后的固定下限；0 表示不额外设置下限。
+      POST_PROCESSING_BUSY_MEDIA_CONCURRENCY: ${POST_PROCESSING_BUSY_MEDIA_CONCURRENCY:-1}
+      POST_PROCESSING_IDLE_STRATEGY_POLL_INTERVAL_SECONDS: ${POST_PROCESSING_IDLE_STRATEGY_POLL_INTERVAL_SECONDS:-1}
+      # db_save 瞬时数据库错误重试；总尝试次数含第一次执行。
+      POST_PROCESSING_DB_SAVE_MAX_ATTEMPTS: ${POST_PROCESSING_DB_SAVE_MAX_ATTEMPTS:-5}
+      POST_PROCESSING_DB_SAVE_RETRY_DELAY_SECONDS: ${POST_PROCESSING_DB_SAVE_RETRY_DELAY_SECONDS:-5}
+      # 任务内重试耗尽后保持 post_processing，写入 MySQL 等待后台自动重新入队。
+      POST_PROCESSING_FAILED_AUTO_RETRY_ENABLED: ${POST_PROCESSING_FAILED_AUTO_RETRY_ENABLED:-true}
+      POST_PROCESSING_FAILED_AUTO_RETRY_MAX_ATTEMPTS: ${POST_PROCESSING_FAILED_AUTO_RETRY_MAX_ATTEMPTS:-3}
+      POST_PROCESSING_FAILED_AUTO_RETRY_INITIAL_DELAY_SECONDS: ${POST_PROCESSING_FAILED_AUTO_RETRY_INITIAL_DELAY_SECONDS:-60}
+      POST_PROCESSING_FAILED_AUTO_RETRY_MAX_DELAY_SECONDS: ${POST_PROCESSING_FAILED_AUTO_RETRY_MAX_DELAY_SECONDS:-900}
+      POST_PROCESSING_FAILED_AUTO_RETRY_SCAN_INTERVAL_SECONDS: ${POST_PROCESSING_FAILED_AUTO_RETRY_SCAN_INTERVAL_SECONDS:-30}
+      # 数值越大优先级越高；一般无需修改。
+      POST_PROCESSING_PRIORITY_HIGH: ${POST_PROCESSING_PRIORITY_HIGH:-10}
+      POST_PROCESSING_PRIORITY_NORMAL: ${POST_PROCESSING_PRIORITY_NORMAL:-5}
+      POST_PROCESSING_PRIORITY_LOW: ${POST_PROCESSING_PRIORITY_LOW:-1}
+      # 各阶段超时，单位秒；大文件和低带宽环境应适当增大上传超时。
+      POST_PROCESSING_TIMEOUT_VIDEO_INFO: ${POST_PROCESSING_TIMEOUT_VIDEO_INFO:-60}
+      POST_PROCESSING_TIMEOUT_AUDIO_EXTRACT: ${POST_PROCESSING_TIMEOUT_AUDIO_EXTRACT:-300}
+      POST_PROCESSING_TIMEOUT_COVER_EXTRACT: ${POST_PROCESSING_TIMEOUT_COVER_EXTRACT:-120}
+      POST_PROCESSING_TIMEOUT_VIDEO_UPLOAD: ${POST_PROCESSING_TIMEOUT_VIDEO_UPLOAD:-600}
+      POST_PROCESSING_TIMEOUT_AUDIO_UPLOAD: ${POST_PROCESSING_TIMEOUT_AUDIO_UPLOAD:-300}
+      POST_PROCESSING_TIMEOUT_COVER_UPLOAD: ${POST_PROCESSING_TIMEOUT_COVER_UPLOAD:-60}
+      MEDIA_TEMP_DIR: /tmp/media-processing
+
+      # ---------- 对象存储 ----------
+      # STORAGE_TYPE/STORAGE_AUDIO_TYPE 支持 minio 或 cos，不支持本地存储作为正式产物。
+      STORAGE_TYPE: ${STORAGE_TYPE:-minio}
+      STORAGE_AUDIO_TYPE: ${STORAGE_AUDIO_TYPE:-minio}
+      STORAGE_DOWNLOAD_PATH: /tmp/media-processing/download
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio.example.internal:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-change-this-minio-access-key}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-this-minio-secret-key}
+      MINIO_BUCKET: ${MINIO_BUCKET:-media}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      MINIO_APPID: ${MINIO_APPID:-}
+      MINIO_CALLBACK_URL: ${MINIO_CALLBACK_URL:-}
+      MINIO_CALLBACK_FALLBACK_ENABLED: ${MINIO_CALLBACK_FALLBACK_ENABLED:-false}
+      MINIO_CALLBACK_MAX_RETRIES: ${MINIO_CALLBACK_MAX_RETRIES:-3}
+      MINIO_CALLBACK_TIMEOUT: ${MINIO_CALLBACK_TIMEOUT:-45}
+      MINIO_FILEURL_HEAD: ${MINIO_FILEURL_HEAD:-https://media.example.com/files}
+      COS_SECRET_ID: ${COS_SECRET_ID:-}
+      COS_SECRET_KEY: ${COS_SECRET_KEY:-}
+      COS_REGION: ${COS_REGION:-ap-guangzhou}
+      COS_BUCKET: ${COS_BUCKET:-}
+      COS_APPID: ${COS_APPID:-}
+      COS_CALLBACK_URL: ${COS_CALLBACK_URL:-}
+      COS_CALLBACK_FALLBACK_ENABLED: ${COS_CALLBACK_FALLBACK_ENABLED:-false}
+      COS_CALLBACK_MAX_RETRIES: ${COS_CALLBACK_MAX_RETRIES:-3}
+      COS_CALLBACK_TIMEOUT: ${COS_CALLBACK_TIMEOUT:-45}
+      COS_DOMAIN: ${COS_DOMAIN:-}
+      COS_FILEURL_HEAD: ${COS_FILEURL_HEAD:-}
+    ports:
+      - "${RECORDER_NODE_BIND_IP:-0.0.0.0}:${RECORDER_NODE_PORT:-8010}:8010"
+    volumes:
+      - ${RECORDER_NODE_LOG_PATH:-/opt/mediafleet/logs/recorder-node}:/app/logs
+      - ${RECORDER_NODE_TEMP_PATH:-/opt/mediafleet/temp/recorder-node}:/tmp/media-processing
+      - ${ZLM_RECORD_PATH:-/opt/zlmediakit/www/record}:/data/zlmediakit/record
+    restart: unless-stopped
+    networks: [mediafleet-network]
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  mediafleet-network:
+    external: true

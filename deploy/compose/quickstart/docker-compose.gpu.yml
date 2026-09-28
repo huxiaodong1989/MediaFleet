@@ -1,0 +1,15 @@
+services:
+  media-worker:
+    image: ${MEDIA_WORKER_IMAGE:-mediafleet-worker:gpu}
+    environment:
+      ASR_PROVIDER: ${ASR_PROVIDER:-funasr}
+      FUNASR_DEVICE: ${FUNASR_DEVICE:-cuda:0}
+      GLM_ASR_DEVICE: ${GLM_ASR_DEVICE:-cuda:0}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

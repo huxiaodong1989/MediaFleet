@@ -1,0 +1,180 @@
+name: mediafleet-worker-gpu
+
+# GPU media-worker 独立 Stack。所有业务变量直接写在 environment 中。
+# 多个 GPU Worker 必须使用同一个 MEDIA_WORKER_QUEUE_NAME，RabbitMQ 竞争消费。
+services:
+  media-worker-gpu:
+    image: ${MEDIA_WORKER_GPU_IMAGE:-mediafleet-worker:gpu}
+    container_name: ${MEDIA_WORKER_GPU_CONTAINER_NAME:-mediafleet-worker-gpu}
+    environment:
+      # ---------- 服务基础配置 ----------
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8009"
+      SERVICE_DOTENV_ENABLED: "false"
+      SERVICE_LOG_LEVEL: ${MEDIA_WORKER_GPU_LOG_LEVEL:-INFO}
+      # 必须与控制中心 API_KEY 一致。
+      API_KEY: ${MEDIA_WORKER_GPU_API_KEY:-change-this-api-key}
+      APP_ENV: ${APP_ENV:-production}
+      TZ: ${TZ:-Asia/Shanghai}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+
+      # ---------- MySQL ----------
+      DB_TYPE: ${DB_TYPE:-mysql}
+      DB_HOST: ${DB_HOST:-mysql.example.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-mediafleet}
+      DB_PASSWORD: ${DB_PASSWORD:-change-this-db-password}
+      DB_NAME: ${DB_NAME:-mediafleet}
+      DB_CHARSET: ${DB_CHARSET:-utf8mb4}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      DB_AUTO_INIT: ${DB_AUTO_INIT:-false}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-false}
+      DB_INIT_CREATE_SCHEMA: ${DB_INIT_CREATE_SCHEMA:-false}
+      DB_DM_MYSQL_COMPAT: ${DB_DM_MYSQL_COMPAT:-true}
+
+      # ---------- RabbitMQ：与 CPU Worker 使用同一个共享队列竞争消费 ----------
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq.example.internal}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-media_service}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-change-this-rabbitmq-password}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_HEARTBEAT: ${RABBITMQ_HEARTBEAT:-60}
+      RABBITMQ_BLOCKED_TIMEOUT: ${RABBITMQ_BLOCKED_TIMEOUT:-300}
+      RABBITMQ_MAX_TASKS: ${RABBITMQ_MAX_TASKS:-1}
+      RABBITMQ_RECORD_RESULT_EXCHANGE: ${RABBITMQ_RECORD_RESULT_EXCHANGE:-mediafleet.callback.fanout.exchange}
+      RABBITMQ_RECORD_RESULT_TTL: ${RABBITMQ_RECORD_RESULT_TTL:-36000000}
+      RABBITMQ_WORKER_RESULT_EXCHANGE: ${RABBITMQ_WORKER_RESULT_EXCHANGE:-mediafleet.worker.exchange}
+      RABBITMQ_WORKER_RESULT_TTL: ${RABBITMQ_WORKER_RESULT_TTL:-36000000}
+
+      # ---------- 心跳、消费与执行租约 ----------
+      MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL: ${MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL:-http://mediafleet-control-center:8008}
+      MEDIA_NODE_AGENT_URL: ${MEDIA_WORKER_GPU_AGENT_URL:-http://mediafleet-worker-gpu:8009}
+      MEDIA_NODE_NAME: ${MEDIA_WORKER_GPU_NODE_NAME:-media-worker-gpu-01}
+      # GPU Worker 可提高调度展示权重，但通用任务仍由 RabbitMQ 竞争消费。
+      MEDIA_NODE_WEIGHT: ${MEDIA_WORKER_GPU_NODE_WEIGHT:-200}
+      MEDIA_NODE_HEARTBEAT_INTERVAL_SECONDS: ${MEDIA_NODE_HEARTBEAT_INTERVAL_SECONDS:-30}
+      MEDIA_NODE_HEARTBEAT_TIMEOUT_SECONDS: ${MEDIA_NODE_HEARTBEAT_TIMEOUT_SECONDS:-5}
+      # 所有 media-worker 必须保持相同队列名。
+      MEDIA_WORKER_QUEUE_NAME: ${MEDIA_WORKER_QUEUE_NAME:-media-worker.tasks}
+      # ASR/GPU 重任务建议保持 1，避免一个实例预取多个长任务。
+      MEDIA_WORKER_PREFETCH_COUNT: ${MEDIA_WORKER_PREFETCH_COUNT:-1}
+      MEDIA_WORKER_CALLBACK_TIMEOUT_SECONDS: ${MEDIA_WORKER_CALLBACK_TIMEOUT_SECONDS:-10}
+      MEDIA_WORKER_CALLBACK_MAX_RETRIES: ${MEDIA_WORKER_CALLBACK_MAX_RETRIES:-3}
+      MEDIA_WORKER_CALLBACK_RETRY_INTERVAL_SECONDS: ${MEDIA_WORKER_CALLBACK_RETRY_INTERVAL_SECONDS:-5}
+      MEDIA_WORKER_EXECUTION_TIMEOUT_SECONDS: ${MEDIA_WORKER_EXECUTION_TIMEOUT_SECONDS:-1800}
+      MEDIA_WORKER_EXECUTION_LEASE_SECONDS: ${MEDIA_WORKER_EXECUTION_LEASE_SECONDS:-1800}
+      MEDIA_WORKER_EXECUTION_LEASE_RENEW_SECONDS: ${MEDIA_WORKER_EXECUTION_LEASE_RENEW_SECONDS:-600}
+
+      # ---------- 媒体处理与 ASR ----------
+      MEDIA_FFMPEG_PATH: ffmpeg
+      MEDIA_FFPROBE_PATH: ffprobe
+      MEDIA_TEMP_DIR: /tmp/media-processing
+      MEDIA_MAX_UPLOAD_SIZE: ${MEDIA_MAX_UPLOAD_SIZE:-104857600}
+      MEDIA_RECOG_CONCURRENCY: ${MEDIA_RECOG_CONCURRENCY:-1}
+      YOLO_MODEL_PATH: ${YOLO_MODEL_PATH:-resource/models/yolo/yolov8n_head_100.pt}
+      # GPU 镜像默认使用 GLM；如改为 funasr，下面 FunASR GPU 参数才生效。
+      ASR_PROVIDER: ${ASR_PROVIDER:-glm}
+
+      # ---------- FunASR GPU 参数 ----------
+      FUNASR_MODEL_TYPE: ${FUNASR_MODEL_TYPE:-paraformer}
+      FUNASR_DEVICE: ${FUNASR_DEVICE:-cuda:0}
+      FUNASR_PRELOAD: ${FUNASR_PRELOAD:-true}
+      FUNASR_DISABLE_UPDATE: ${FUNASR_DISABLE_UPDATE:-true}
+      FUNASR_NCPU: ${FUNASR_NCPU:-8}
+      FUNASR_GPU_CONCURRENCY: ${FUNASR_GPU_CONCURRENCY:-2}
+      FUNASR_CPU_CONCURRENCY: ${FUNASR_CPU_CONCURRENCY:-1}
+      FUNASR_BATCH_SIZE_S: ${FUNASR_BATCH_SIZE_S:-120}
+      FUNASR_VAD_MAX_SEGMENT_MS: ${FUNASR_VAD_MAX_SEGMENT_MS:-60000}
+      FUNASR_MERGE_VAD: ${FUNASR_MERGE_VAD:-true}
+      FUNASR_MERGE_LENGTH_S: ${FUNASR_MERGE_LENGTH_S:-15}
+      FUNASR_PARAFORMER_ZH_MODEL: ${FUNASR_PARAFORMER_ZH_MODEL:-iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch}
+      FUNASR_PARAFORMER_EN_MODEL: ${FUNASR_PARAFORMER_EN_MODEL:-iic/speech_paraformer_asr-en-16k-vocab4199-pytorch}
+      FUNASR_VAD_MODEL: ${FUNASR_VAD_MODEL:-damo/speech_fsmn_vad_zh-cn-16k-common-pytorch}
+      FUNASR_PUNC_MODEL: ${FUNASR_PUNC_MODEL:-damo/punc_ct-transformer_zh-cn-common-vocab272727-pytorch}
+      FUNASR_SPK_MODEL: ${FUNASR_SPK_MODEL:-damo/speech_campplus_sv_zh-cn_16k-common}
+      FUNASR_SENSEVOICE_MODEL: ${FUNASR_SENSEVOICE_MODEL:-iic/SenseVoiceSmall}
+      FUNASR_SENSEVOICE_LANGUAGE: ${FUNASR_SENSEVOICE_LANGUAGE:-auto}
+      FUNASR_SENSEVOICE_USE_ITN: ${FUNASR_SENSEVOICE_USE_ITN:-true}
+      FUNASR_SENSEVOICE_OUTPUT_TIMESTAMP: ${FUNASR_SENSEVOICE_OUTPUT_TIMESTAMP:-true}
+      FUNASR_SENSEVOICE_TRUST_REMOTE_CODE: ${FUNASR_SENSEVOICE_TRUST_REMOTE_CODE:-true}
+
+      # ---------- GLM-ASR GPU 参数 ----------
+      # 模型目录位于持久化 ModelScope 缓存中；默认启动时预加载。
+      GLM_ASR_MODEL: ${GLM_ASR_MODEL:-/root/.cache/modelscope/hub/models/ZhipuAI/GLM-ASR-Nano-2512}
+      GLM_ASR_DEVICE: ${GLM_ASR_DEVICE:-cuda:0}
+      GLM_ASR_PRELOAD: ${GLM_ASR_PRELOAD:-true}
+      GLM_ASR_VAD_MODEL: ${GLM_ASR_VAD_MODEL:-fsmn-vad}
+      GLM_ASR_BATCH_SIZE: ${GLM_ASR_BATCH_SIZE:-32}
+      GLM_ASR_MAX_GAP_MS: ${GLM_ASR_MAX_GAP_MS:-700}
+      GLM_ASR_MAX_SEGMENT_MS: ${GLM_ASR_MAX_SEGMENT_MS:-30000}
+      GLM_ASR_MIN_SEGMENT_MS: ${GLM_ASR_MIN_SEGMENT_MS:-3000}
+      GLM_ASR_RECOGNITION_CONTEXT_MS: ${GLM_ASR_RECOGNITION_CONTEXT_MS:-0}
+      GLM_ASR_MIN_RECOGNITION_MS: ${GLM_ASR_MIN_RECOGNITION_MS:-0}
+      GLM_ASR_MAX_NEW_TOKENS: ${GLM_ASR_MAX_NEW_TOKENS:-128}
+      GLM_ASR_NO_REPEAT_NGRAM_SIZE: ${GLM_ASR_NO_REPEAT_NGRAM_SIZE:-8}
+      GLM_ASR_REPETITION_PENALTY: ${GLM_ASR_REPETITION_PENALTY:-1.05}
+      GLM_ASR_LENGTH_PENALTY: ${GLM_ASR_LENGTH_PENALTY:-1.0}
+      GLM_ASR_PROMPT: ${GLM_ASR_PROMPT:-请将音频转写成简体中文文本。}
+      GLM_ASR_KEEP_CHUNKS: ${GLM_ASR_KEEP_CHUNKS:-false}
+      GLM_ASR_CPU_CONCURRENCY: ${GLM_ASR_CPU_CONCURRENCY:-1}
+      GLM_ASR_GPU_CONCURRENCY: ${GLM_ASR_GPU_CONCURRENCY:-1}
+
+      # ---------- 对象存储 ----------
+      STORAGE_TYPE: ${STORAGE_TYPE:-minio}
+      STORAGE_AUDIO_TYPE: ${STORAGE_AUDIO_TYPE:-minio}
+      STORAGE_DOWNLOAD_PATH: /tmp/media-processing/download
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio.example.internal:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-change-this-minio-access-key}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-this-minio-secret-key}
+      MINIO_BUCKET: ${MINIO_BUCKET:-media}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      MINIO_APPID: ${MINIO_APPID:-}
+      MINIO_CALLBACK_URL: ${MINIO_CALLBACK_URL:-}
+      MINIO_CALLBACK_FALLBACK_ENABLED: ${MINIO_CALLBACK_FALLBACK_ENABLED:-false}
+      MINIO_CALLBACK_MAX_RETRIES: ${MINIO_CALLBACK_MAX_RETRIES:-3}
+      MINIO_CALLBACK_TIMEOUT: ${MINIO_CALLBACK_TIMEOUT:-45}
+      MINIO_FILEURL_HEAD: ${MINIO_FILEURL_HEAD:-https://media.example.com/files}
+      COS_SECRET_ID: ${COS_SECRET_ID:-}
+      COS_SECRET_KEY: ${COS_SECRET_KEY:-}
+      COS_REGION: ${COS_REGION:-ap-guangzhou}
+      COS_BUCKET: ${COS_BUCKET:-}
+      COS_APPID: ${COS_APPID:-}
+      COS_CALLBACK_URL: ${COS_CALLBACK_URL:-}
+      COS_CALLBACK_FALLBACK_ENABLED: ${COS_CALLBACK_FALLBACK_ENABLED:-false}
+      COS_CALLBACK_MAX_RETRIES: ${COS_CALLBACK_MAX_RETRIES:-3}
+      COS_CALLBACK_TIMEOUT: ${COS_CALLBACK_TIMEOUT:-45}
+      COS_DOMAIN: ${COS_DOMAIN:-}
+      COS_FILEURL_HEAD: ${COS_FILEURL_HEAD:-}
+      # 容器可见 GPU 编号；单卡通常为 0，多卡部署每个 Stack 使用不同编号。
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-0}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    ports:
+      - "${MEDIA_WORKER_GPU_BIND_IP:-0.0.0.0}:${MEDIA_WORKER_GPU_PORT:-8009}:8009"
+    volumes:
+      # 模型缓存必须持久化，否则重建容器后会重新下载模型。
+      - ${MEDIA_WORKER_GPU_LOG_PATH:-/opt/mediafleet/logs/media-worker-gpu}:/app/logs
+      - ${MEDIA_WORKER_GPU_TEMP_PATH:-/opt/mediafleet/temp/media-worker-gpu}:/tmp/media-processing
+      - ${MEDIA_WORKER_GPU_DATA_PATH:-/opt/mediafleet/data/media-worker-gpu}:/app/data
+      - ${MODELSCOPE_CACHE_PATH:-/opt/mediafleet/models/modelscope}:/root/.cache/modelscope
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # 与 NVIDIA_VISIBLE_DEVICES 保持一致。
+              device_ids: ["${GPU_DEVICE_ID:-0}"]
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks: [mediafleet-network]
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8009/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+
+networks:
+  mediafleet-network:
+    external: true

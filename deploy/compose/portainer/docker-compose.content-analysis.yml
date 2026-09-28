@@ -1,0 +1,95 @@
+name: mediafleet-content-analysis
+
+# AI 评课/内容分析独立 Stack。所有变量直接写在 environment，不依赖 env_file。
+services:
+  content-analysis:
+    image: ${CONTENT_ANALYSIS_IMAGE:-mediafleet-content-analysis:stable}
+    container_name: ${CONTENT_ANALYSIS_CONTAINER_NAME:-content-analysis}
+    environment:
+      # ---------- 服务基础配置 ----------
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8012"
+      # Portainer 部署只读取本 environment，不读取镜像内 .env。
+      SERVICE_DOTENV_ENABLED: "false"
+      SERVICE_LOG_LEVEL: ${CONTENT_ANALYSIS_LOG_LEVEL:-INFO}
+      # 节点心跳使用的内部密钥，必须与控制中心 API_KEY 一致。
+      API_KEY: ${CONTENT_ANALYSIS_API_KEY:-change-this-api-key}
+      APP_ENV: ${APP_ENV:-production}
+      TZ: ${TZ:-Asia/Shanghai}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+
+      # ---------- MySQL：公共任务事实、评课结果、步骤检查点和提示词版本 ----------
+      DB_TYPE: ${DB_TYPE:-mysql}
+      DB_HOST: ${DB_HOST:-mysql.example.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-mediafleet}
+      DB_PASSWORD: ${DB_PASSWORD:-change-this-db-password}
+      DB_NAME: ${DB_NAME:-mediafleet}
+      DB_CHARSET: ${DB_CHARSET:-utf8mb4}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      # 首次部署/开发环境可设为 true；稳定生产建议由发布窗口单独执行迁移后设为 false。
+      DB_AUTO_INIT: ${DB_AUTO_INIT:-false}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-false}
+      DB_INIT_CREATE_SCHEMA: ${DB_INIT_CREATE_SCHEMA:-false}
+      DB_DM_MYSQL_COMPAT: ${DB_DM_MYSQL_COMPAT:-true}
+
+      # ---------- RabbitMQ：内容分析独立 Exchange 与共享队列 ----------
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq.example.internal}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-media_service}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-change-this-rabbitmq-password}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_HEARTBEAT: ${RABBITMQ_HEARTBEAT:-60}
+      RABBITMQ_BLOCKED_TIMEOUT: ${RABBITMQ_BLOCKED_TIMEOUT:-300}
+      RABBITMQ_MAX_TASKS: ${RABBITMQ_MAX_TASKS:-1}
+
+      # ---------- 节点心跳 ----------
+      MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL: ${MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL:-http://mediafleet-control-center:8008}
+      # 内容分析实例稳定编号；同一实例重启/升级镜像必须保持不变，多实例必须各不相同。
+      CONTENT_ANALYSIS_INSTANCE_ID: ${CONTENT_ANALYSIS_INSTANCE_ID:-content-analysis-01}
+      MEDIA_NODE_NAME: ${CONTENT_ANALYSIS_NODE_NAME:-content-analysis-01}
+      MEDIA_NODE_WEIGHT: ${CONTENT_ANALYSIS_NODE_WEIGHT:-100}
+      MEDIA_NODE_HEARTBEAT_INTERVAL_SECONDS: ${MEDIA_NODE_HEARTBEAT_INTERVAL_SECONDS:-30}
+      MEDIA_NODE_HEARTBEAT_TIMEOUT_SECONDS: ${MEDIA_NODE_HEARTBEAT_TIMEOUT_SECONDS:-5}
+
+      # ---------- 内容分析消费与执行租约 ----------
+      CONTENT_ANALYSIS_CONSUMER_ENABLED: ${CONTENT_ANALYSIS_CONSUMER_ENABLED:-true}
+      CONTENT_ANALYSIS_PREFETCH_COUNT: ${CONTENT_ANALYSIS_PREFETCH_COUNT:-1}
+      CONTENT_ANALYSIS_RECONNECT_DELAY_SECONDS: ${CONTENT_ANALYSIS_RECONNECT_DELAY_SECONDS:-5}
+      CONTENT_ANALYSIS_RETRY_DELAY_MILLISECONDS: ${CONTENT_ANALYSIS_RETRY_DELAY_MILLISECONDS:-5000}
+      CONTENT_ANALYSIS_EXECUTION_TIMEOUT_SECONDS: ${CONTENT_ANALYSIS_EXECUTION_TIMEOUT_SECONDS:-3600}
+      CONTENT_ANALYSIS_LEASE_SECONDS: ${CONTENT_ANALYSIS_LEASE_SECONDS:-1800}
+      CONTENT_ANALYSIS_LEASE_RENEW_SECONDS: ${CONTENT_ANALYSIS_LEASE_RENEW_SECONDS:-600}
+
+      # ---------- 大模型与材料处理 ----------
+      CONTENT_ANALYSIS_OPENAI_API_KEY: ${CONTENT_ANALYSIS_OPENAI_API_KEY:-change-this-model-api-key}
+      CONTENT_ANALYSIS_OPENAI_BASE_URL: ${CONTENT_ANALYSIS_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      CONTENT_ANALYSIS_DEFAULT_MODEL: ${CONTENT_ANALYSIS_DEFAULT_MODEL:-gpt-4.1}
+      CONTENT_ANALYSIS_LLM_TIMEOUT_SECONDS: ${CONTENT_ANALYSIS_LLM_TIMEOUT_SECONDS:-180}
+      CONTENT_ANALYSIS_LLM_MAX_RETRIES: ${CONTENT_ANALYSIS_LLM_MAX_RETRIES:-3}
+      CONTENT_ANALYSIS_DOWNLOAD_TIMEOUT_SECONDS: ${CONTENT_ANALYSIS_DOWNLOAD_TIMEOUT_SECONDS:-60}
+      CONTENT_ANALYSIS_MAX_FILE_SIZE_MB: ${CONTENT_ANALYSIS_MAX_FILE_SIZE_MB:-100}
+
+      # ---------- 行为分析与业务回调 ----------
+      CONTENT_ANALYSIS_BEHAVIOR_API_URL: ${CONTENT_ANALYSIS_BEHAVIOR_API_URL:-}
+      CONTENT_ANALYSIS_BEHAVIOR_TIMEOUT_SECONDS: ${CONTENT_ANALYSIS_BEHAVIOR_TIMEOUT_SECONDS:-30}
+      CONTENT_ANALYSIS_CALLBACK_TIMEOUT_SECONDS: ${CONTENT_ANALYSIS_CALLBACK_TIMEOUT_SECONDS:-10}
+    ports:
+      - "${CONTENT_ANALYSIS_BIND_IP:-0.0.0.0}:${CONTENT_ANALYSIS_PORT:-8012}:8012"
+    volumes:
+      - ${CONTENT_ANALYSIS_LOG_PATH:-/opt/mediafleet/logs/content-analysis}:/app/logs
+      - ${CONTENT_ANALYSIS_TEMP_PATH:-/opt/mediafleet/temp/content-analysis}:/tmp/content-analysis
+      - ${CONTENT_ANALYSIS_DATA_PATH:-/opt/mediafleet/data/content-analysis}:/app/data
+    restart: unless-stopped
+    networks: [mediafleet-network]
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8012/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  mediafleet-network:
+    external: true
