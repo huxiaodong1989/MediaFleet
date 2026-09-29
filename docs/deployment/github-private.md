@@ -21,9 +21,9 @@
 - 管理员也遵守相同规则；
 - 确定 Organization 用户或团队后添加 `.github/CODEOWNERS`。
 
-个人 GitHub Free 账号的 Private 仓库可能无法启用分支保护。GitHub 返回此限制时，应升级
-GitHub Pro，或将仓库转移到支持 Private 分支保护的公司 Organization；不能把“管理员自觉
-不直接推送”视为等价控制。
+GitHub Free 个人账号或 Free Organization 的 Private 仓库可能无法强制执行分支保护。
+GitHub 返回此限制时，应将 Organization 升级到 GitHub Team，或在仓库转为 Public 后启用；
+“管理员自觉不直接推送”只能作为内部验证阶段的临时约定。
 
 ## 安全设置
 

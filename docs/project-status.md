@@ -32,7 +32,8 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 增加中文 Bug、功能建议模板和 GitHub Private 仓库上线清单。
 - 增加默认 CODEOWNERS，由仓库所有者审查发布、安全、契约和数据库变更。
 - CI 增加 Python 3.10–3.12 测试矩阵、Ruff 高置信静态检查、构建和 Compose 校验，并固定 uv 版本。
-- 已在 `huxiaodong1989/MediaFleet` 创建 Private 仓库、合并 GitHub 初始提交并推送 `main`。
+- 已将 Private 仓库迁移到 `mediafleet-dev/MediaFleet` Organization，保留提交历史、PR、
+  Actions 和 Dependabot 配置；本地 `origin` 已同步到新的 Organization 地址。
 - 首次 GitHub CI 和完整历史 Secret Scan 已通过。
 - 将存在两个低危安全告警的 Torch 2.9.1 升级到 2.13.0，配套固定 Torchvision 0.28.0；
   移除没有 2.13 匹配版本的 Torchaudio，改用 `kaldi-native-fbank` 支持 FunASR 特征提取。
@@ -91,6 +92,9 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
   现有代码仍导入已移除的 `moviepy.editor`，必须先迁移代码并执行媒体回归；ModelScope #7
   和 Transformers #8 的目标版本可独立导入，但仍需更新锁文件后执行与 Torch、FunASR、
   GLM-ASR 模型组合的加载和推理验证。
+- 仓库迁移后 Dependabot 新建 Torch #10 和 Torchvision #9 更新 PR。两者属于必须保持版本配对
+  的媒体栈依赖，不能分别合并；当前检查失败，应在同一兼容分支中成对升级并重新执行 CPU、
+  GPU 镜像构建及模型回归。
 
 ## 剩余风险
 
@@ -105,7 +109,8 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 容器仍以 root 用户运行，尚未增加只读文件系统、Linux capability 限制和镜像安全扫描。
 - 回调、下载和流媒体 URL 尚未建立按用途配置的主机或 CIDR 允许列表。
 - 当前内部接口仍使用共享 API Key，尚未提供调用方身份、权限范围、轮换和撤销机制。
-- 当前仓库属于个人 GitHub Free 账号；GitHub API 明确拒绝为 Private 仓库启用分支保护，需升级 GitHub Pro、转入支持该功能的 Organization，或在改为 Public 后启用。
+- 当前仓库位于个人管理的 GitHub Free Organization；GitHub API 仍拒绝为 Private 仓库启用
+  Ruleset。需要将 Organization 升级到 GitHub Team，或在仓库改为 Public 后启用强制保护。
 - MoviePy、ModelScope 和 Transformers 仍各有一个大版本升级 PR，需要结合媒体处理、模型
   加载和推理回归测试逐项评估，不能直接自动合并。
 
@@ -113,5 +118,5 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 
 在部门测试环境部署当前镜像，执行长时间录制、停止后处理、重复消息和服务重启恢复测试。
 MoviePy、ModelScope 和 Transformers 升级分别建立兼容迁移分支，更新锁文件并完成真实媒体
-与模型回归后再合并。通过后发布 `v0.1.0-internal.1` 供部门内部验证，并决定升级 GitHub Pro
-或将仓库转入公司 Organization，以启用 Private 仓库分支保护。
+与模型回归后再合并。通过后发布 `v0.1.0-internal.1` 供部门内部验证，并决定是否将
+`mediafleet-dev` 升级到 GitHub Team，或继续使用人工 PR 约定直到仓库转为 Public。
