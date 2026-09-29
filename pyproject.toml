@@ -87,7 +87,7 @@ media-worker = [
     # Torch 与 Torchvision 必须按官方兼容矩阵成对升级。FunASR 使用
     # kaldi-native-fbank/FFmpeg，不依赖尚无 2.13 配套版本的 Torchaudio。
     "torch==2.13.0",
-    "torchvision==0.28.0",
+    "torchvision==0.29.0",
     "ultralytics>=8.3.235",
     "supervision>=0.27.0",
 ]
