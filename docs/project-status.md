@@ -41,6 +41,9 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - GitHub Actions 升级到 Node.js 24 运行时版本，并固定 Ubuntu 24.04 Runner。
 - GPU Worker 对齐 CUDA 12.6、`cu126` wheel 与 Torch 2.13，CPU 与 GPU 镜像使用同一
   Torch/Torchvision 版本对。
+- Torch 修复后的 GitHub CI、完整历史 Secret Scan 和 Dependabot 更新任务均通过，两个
+  Torch 安全告警已自动关闭，当前开放安全告警为 0。
+- 已关闭被主分支覆盖的 GitHub Actions Dependabot PR；Torchaudio PR 因依赖移除自动关闭。
 
 ## 验证
 
@@ -69,10 +72,12 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 回调、下载和流媒体 URL 尚未建立按用途配置的主机或 CIDR 允许列表。
 - 当前内部接口仍使用共享 API Key，尚未提供调用方身份、权限范围、轮换和撤销机制。
 - 当前仓库属于个人 GitHub Free 账号；GitHub API 明确拒绝为 Private 仓库启用分支保护，需升级 GitHub Pro、转入支持该功能的 Organization，或在改为 Public 后启用。
+- MoviePy、ModelScope 和 Transformers 仍各有一个大版本升级 PR，需要结合媒体处理、模型
+  加载和推理回归测试逐项评估，不能直接自动合并。
 
 ## 下一步
 
-确认 Torch 依赖修复后的 GitHub CI、Secret Scan 和 Dependabot 安全告警状态；随后在真实
-MySQL、RabbitMQ、ZLMediaKit、对象存储和 NVIDIA 环境执行冒烟测试。通过后发布
-`v0.1.0-internal.1` 供部门内部验证，并决定升级 GitHub Pro 或将仓库转入公司
-Organization，以启用 Private 仓库分支保护。
+在真实 MySQL、RabbitMQ、ZLMediaKit、对象存储和 NVIDIA 环境执行冒烟测试，并逐项评估
+MoviePy、ModelScope 和 Transformers 大版本升级。通过后发布 `v0.1.0-internal.1` 供部门
+内部验证，并决定升级 GitHub Pro 或将仓库转入公司 Organization，以启用 Private 仓库
+分支保护。
