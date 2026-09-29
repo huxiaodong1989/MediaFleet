@@ -74,6 +74,7 @@ media-worker = [
     "opencv-python>=4.12.0",
     "librosa",
     "soundfile",
+    "kaldi-native-fbank==1.22.3",
     "scikit-learn>=1.3.2",
     "funasr>=1.1.2",
     "modelscope==1.32.0",
@@ -81,8 +82,10 @@ media-worker = [
     "tiktoken>=0.7.0",
     "peft>=0.11.0",
     "diffusers>=0.30.0",
-    "torch>=1.13",
-    "torchaudio==2.9.1",
+    # Torch 与 Torchvision 必须按官方兼容矩阵成对升级。FunASR 使用
+    # kaldi-native-fbank/FFmpeg，不依赖尚无 2.13 配套版本的 Torchaudio。
+    "torch==2.13.0",
+    "torchvision==0.28.0",
     "ultralytics>=8.3.235",
     "supervision>=0.27.0",
 ]
@@ -118,17 +121,17 @@ explicit = true
 [tool.uv.sources]
 # 默认锁定 CPU wheel，避免 media-worker CPU 镜像意外携带数 GB CUDA 运行库。
 torch = { index = "pytorch-cpu" }
-torchaudio = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ffmpeg-python>=0.2.0",
     "ruff>=0.13,<1",
 ]
 
+[tool.uv]
 # 覆盖问题依赖版本（Windows 编译兼容性）
 override-dependencies = [
     # editdistance 0.8.1 在 Windows + Python 3.13 环境下编译失败

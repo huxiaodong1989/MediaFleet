@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.7.20"
+          version: "0.12.20"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -45,12 +45,28 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.7.20"
+          version: "0.12.20"
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --frozen
       - run: uv run python -m pytest -q
+
+  media-worker-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --no-dev --extra media-worker
+      - name: Validate media worker ML stack
+        run: uv run --no-sync python -c "import kaldi_native_fbank, torch, torchvision; print(torch.__version__, torchvision.__version__)"
+      - name: Audit media worker dependencies
+        run: uv run --no-sync --with pip-audit pip-audit --progress-spinner off
 
   dependency-audit:
     runs-on: ubuntu-latest
@@ -58,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "0.7.20"
+          version: "0.12.20"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

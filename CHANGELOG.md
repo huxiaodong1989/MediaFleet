@@ -16,6 +16,8 @@ MediaFleet 的重要变更记录在此。项目遵循
 - 增加 GitHub 中文 Issue 模板、Private 仓库上线清单、Python 3.10–3.12 CI 矩阵、
   Ruff 高置信静态检查、构建和 Compose 校验。
 - 增加 CODEOWNERS，并让 Gitleaks 在首次导入和合并提交场景下扫描完整历史。
+- CI 增加 `media-worker` 完整机器学习依赖安装、导入和漏洞审计，避免默认依赖测试遗漏
+  可选媒体栈。
 
 ### 修复
 
@@ -27,6 +29,10 @@ MediaFleet 的重要变更记录在此。项目遵循
 - 移除 FFmpeg Shell 拼接执行及完整命令日志，收紧直播录制请求日志。
 - 生产环境拒绝公开占位符或过短的共享 API Key。
 - 修复旧视频接口和 YOLO 处理器中的三个未定义名称。
+- 将 Torch/Torchvision 固定为兼容的 `2.13.0`/`0.28.0` 组合，移除没有匹配安全版本的
+  Torchaudio，并使用 `kaldi-native-fbank` 保留 FunASR 特征提取能力。
+- 将 GPU Worker 切换到 CUDA 12.6 与 `cu126` wheel 通道，确保与 Torch 2.13 的官方
+  发布产物匹配。
 
 ## [0.1.0] - 2026-09-28
 

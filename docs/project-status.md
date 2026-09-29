@@ -17,7 +17,7 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 用单一干净 Alembic 基线 `20260928_0001` 替换历史升级链。
 - 移除嵌入式凭据和环境特定地址；日志会移除 URL 用户信息、查询参数和片段。
 - 确定 REST 为稳定远程契约，并规划基于 SDK 的 CLI 与 MCP，禁止其绕过授权直连数据库或 MQ。
-- 更新依赖锁；截至 2026-09-28，`pip-audit` 未报告已知漏洞。
+- 更新依赖锁；截至 2026-09-29，`pip-audit` 未报告已知漏洞。
 - 将 GitHub 默认 README 和仓库级协作文档改为中文。
 - 新增文档导航、项目背景、总体架构、服务边界、数据与消息可靠性、接口架构、扩展开发
   指南和架构决策记录机制。
@@ -33,6 +33,13 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 增加默认 CODEOWNERS，由仓库所有者审查发布、安全、契约和数据库变更。
 - CI 增加 Python 3.10–3.12 测试矩阵、Ruff 高置信静态检查、构建和 Compose 校验，并固定 uv 版本。
 - 已在 `huxiaodong1989/MediaFleet` 创建 Private 仓库、合并 GitHub 初始提交并推送 `main`。
+- 首次 GitHub CI 和完整历史 Secret Scan 已通过。
+- 将存在两个低危安全告警的 Torch 2.9.1 升级到 2.13.0，配套固定 Torchvision 0.28.0；
+  移除没有 2.13 匹配版本的 Torchaudio，改用 `kaldi-native-fbank` 支持 FunASR 特征提取。
+- CI 增加 `media-worker` 完整可选依赖安装、Torch/FunASR 导入和漏洞审计，防止默认依赖
+  测试掩盖媒体栈解析错误。
+- GPU Worker 对齐 CUDA 12.6、`cu126` wheel 与 Torch 2.13，CPU 与 GPU 镜像使用同一
+  Torch/Torchvision 版本对。
 
 ## 验证
 
@@ -42,7 +49,10 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 内容分析、评课查询和共享表结构专项验证：33 项通过。
 - 15 份 Docker Compose 定义使用公开示例环境执行 `config --quiet` 通过。
 - `uv run ruff check media_platform services tests` 通过。
-- `pip-audit` 未发现已知漏洞；Gitleaks `v8.28.0` 对 4 个提交和当前待提交文件扫描均未发现泄漏。
+- 本地完整 `media-worker` 环境导入 Torch 2.13.0、Torchvision 0.28.0 和
+  `kaldi-native-fbank` 通过；确认环境中不再安装 Torchaudio。
+- `cu126` 官方索引包含 Linux Python 3.10 的 Torch 2.13.0 与 Torchvision 0.28.0 wheel。
+- `pip-audit` 未发现已知漏洞；Gitleaks `v8.28.0` 对完整 Git 历史扫描未发现泄漏。
 - 已检查旧仓库名称、Shell 执行、硬编码示例地址、敏感路径和 `git diff --check`。
 
 ## 剩余风险
@@ -50,6 +60,8 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 兼容 Schema 仍会产生 Pydantic V2 弃用警告，应在 Pydantic V3 前完成现代化。
 - 最新 Starlette 测试客户端提示 `httpx` 集成将弃用并迁移到 `httpx2`。
 - 可选模型、FFmpeg 构建、Ultralytics 部署和厂商数据库驱动需要按部署环境单独审查许可证。
+- GPU Worker 完整镜像构建和实际 CUDA 推理仍需在可访问 Docker Hub 且有 NVIDIA 运行时的
+  Linux 构建机验证。
 - 真实 MySQL、RabbitMQ、ZLMediaKit 和对象存储集成测试仍依赖外部环境。
 - 部分旧兼容 API 和模型尚未迁移到统一的新应用服务。
 - 容器仍以 root 用户运行，尚未增加只读文件系统、Linux capability 限制和镜像安全扫描。
@@ -59,6 +71,7 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 
 ## 下一步
 
-修复并确认首次 GitHub Actions 全部通过；随后决定升级 GitHub Pro 或将仓库转入公司
-Organization，以启用 Private 仓库分支保护。完成真实基础设施冒烟测试后发布
-`v0.1.0-internal.1` 供部门内部验证。
+确认 Torch 依赖修复后的 GitHub CI、Secret Scan 和 Dependabot 安全告警状态；随后在真实
+MySQL、RabbitMQ、ZLMediaKit、对象存储和 NVIDIA 环境执行冒烟测试。通过后发布
+`v0.1.0-internal.1` 供部门内部验证，并决定升级 GitHub Pro 或将仓库转入公司
+Organization，以启用 Private 仓库分支保护。

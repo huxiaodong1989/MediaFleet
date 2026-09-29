@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
 
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /uvx /bin/
 
@@ -29,24 +29,22 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 
-ARG PYTORCH_INDEX_URL="https://download.pytorch.org/whl/cu128"
+ARG PYTORCH_INDEX_URL="https://download.pytorch.org/whl/cu126"
 ENV PYTORCH_INDEX_URL=${PYTORCH_INDEX_URL}
 
-# 当前 uv.lock 固定的是 CPU wheel。GPU 镜像先安装除 Torch 外的媒体依赖，
+# 当前 uv.lock 固定的是 CPU wheel。GPU 镜像先安装除 Torch 族外的媒体依赖，
 # 再从 CUDA wheel 源一次性安装 Torch 族，避免“先下载 CPU、再重新下载 CUDA”。
 # uv 缓存挂载到 BuildKit cache，CI 重建或重试时可以复用已下载的大文件。
 RUN --mount=type=cache,id=media-worker-gpu-uv,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra media-worker \
       --no-install-package torch \
-      --no-install-package torchaudio \
       --no-install-package torchvision
 
 # 只执行一次 CUDA Torch 安装；PYTORCH_INDEX_URL 可由 CI 或部署环境覆盖。
 RUN --mount=type=cache,id=media-worker-gpu-uv,target=/root/.cache/uv \
     uv pip install --python .venv/bin/python \
-    torch==2.9.1 \
-    torchaudio==2.9.1 \
-    torchvision==0.24.1 \
+    torch==2.13.0 \
+    torchvision==0.28.0 \
     --index-url ${PYTORCH_INDEX_URL}
 
 COPY . /app
