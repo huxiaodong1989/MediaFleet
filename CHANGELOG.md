@@ -18,6 +18,8 @@ MediaFleet 的重要变更记录在此。项目遵循
 - 增加 CODEOWNERS，并让 Gitleaks 在首次导入和合并提交场景下扫描完整历史。
 - CI 增加 `media-worker` 完整机器学习依赖安装、导入和漏洞审计，避免默认依赖测试遗漏
   可选媒体栈。
+- GitHub Actions 升级到 Node.js 24 运行时版本，并固定 Ubuntu 24.04 Runner，避免弃用版本和
+  `ubuntu-latest` 基础环境迁移影响构建。
 
 ### 修复
 

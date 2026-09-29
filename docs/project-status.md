@@ -38,6 +38,7 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
   移除没有 2.13 匹配版本的 Torchaudio，改用 `kaldi-native-fbank` 支持 FunASR 特征提取。
 - CI 增加 `media-worker` 完整可选依赖安装、Torch/FunASR 导入和漏洞审计，防止默认依赖
   测试掩盖媒体栈解析错误。
+- GitHub Actions 升级到 Node.js 24 运行时版本，并固定 Ubuntu 24.04 Runner。
 - GPU Worker 对齐 CUDA 12.6、`cu126` wheel 与 Torch 2.13，CPU 与 GPU 镜像使用同一
   Torch/Torchvision 版本对。
 
