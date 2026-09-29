@@ -16,7 +16,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.20"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv sync --frozen
@@ -46,7 +46,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.20"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --frozen
@@ -59,7 +59,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.20"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv sync --frozen --no-dev --extra media-worker
@@ -75,7 +75,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.20"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: uv sync --frozen
