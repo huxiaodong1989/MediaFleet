@@ -7,7 +7,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
     APP_TIMEZONE=Asia/Shanghai
 
-RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
+ARG DEBIAN_MIRROR_HOST=""
+
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources && \
+    if [ -n "${DEBIAN_MIRROR_HOST}" ]; then \
+      sed -i "s/deb.debian.org/${DEBIAN_MIRROR_HOST}/g" /etc/apt/sources.list.d/debian.sources; \
+    fi && \
     apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates tzdata tesseract-ocr tesseract-ocr-chi-sim \
     && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \

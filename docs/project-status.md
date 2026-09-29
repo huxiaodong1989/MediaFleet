@@ -44,6 +44,14 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - Torch 修复后的 GitHub CI、完整历史 Secret Scan 和 Dependabot 更新任务均通过，两个
   Torch 安全告警已自动关闭，当前开放安全告警为 0。
 - 已关闭被主分支覆盖的 GitHub Actions Dependabot PR；Torchaudio PR 因依赖移除自动关闭。
+- 修复容器构建对单一 HTTP Debian 镜像源的硬依赖：Debian 服务镜像默认使用官方 HTTPS
+  源，并允许通过 `DEBIAN_MIRROR_HOST` 在受限网络中选择兼容镜像站；GPU Worker 的 Ubuntu
+  软件源也统一升级为 HTTPS。
+- 将 SQLAlchemy 约束收紧为 `<2.1` 并锁定 `2.0.54`，避免 `sqlalchemy-utils 0.42.1`
+  在真实数据库初始化时引用 SQLAlchemy 2.1 已移除接口，导致所有服务启动崩溃。
+- 修复 ZLMediaKit 明确拒绝 `startRecord` 后录制任务永久停留在 `processing` 的问题；录制
+  节点现在立即进入统一失败尾链路、释放本机容量，并避免误发 `stopRecord` 影响同技术流
+  上的其他任务。
 
 ## 验证
 
@@ -58,15 +66,41 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - `cu126` 官方索引包含 Linux Python 3.10 的 Torch 2.13.0 与 Torchvision 0.28.0 wheel。
 - `pip-audit` 未发现已知漏洞；Gitleaks `v8.28.0` 对完整 Git 历史扫描未发现泄漏。
 - 已检查旧仓库名称、Shell 执行、硬编码示例地址、敏感路径和 `git diff --check`。
+- 四个 CPU 服务镜像均在 Docker Desktop 构建成功：`control-center`、`recorder-node`、
+  `content-analysis` 和 `media-worker`；CPU Worker 镜像已确认包含 FFmpeg、Torch
+  `2.13.0+cpu`、Torchvision `0.28.0+cpu`、FunASR `1.4.16`、ModelScope `1.32.0`
+  和 Transformers `5.13.0`。
+- GPU Worker 镜像在 Docker Desktop 构建成功，镜像内 Torch `2.13.0+cu126`、
+  Torchvision `0.28.0+cu126` 和 CUDA `12.6` 导入通过；当前主机没有可用 NVIDIA
+  运行时，`torch.cuda.is_available()` 为 `False`，因此未执行 GPU 推理。
+- 使用独立临时 MySQL 8.4、RabbitMQ、S3 兼容对象存储和现有测试 ZLMediaKit 完成冒烟：
+  四个服务健康检查通过，Worker、Recorder 和 Content Analysis 节点心跳均写入 MySQL；
+  对象存储建桶、写入和读回通过；ZLMediaKit API 鉴权调用成功。
+- 通过控制中心创建 `video.cover.extract` 任务，CPU Worker 完成真实 2 秒视频封面提取，
+  MySQL 记录 `completed`、执行节点和 `COVER` 产物，对象存储中存在对应文件。
+- 通过控制中心创建不存在源流的录制任务，ZLMediaKit 返回拒绝后任务进入 `failed`，RabbitMQ
+  命令已消费，MySQL 保留执行节点与明确错误原因；专项回归测试覆盖“不发送 stopRecord”
+  和释放容量行为。
+- 通过控制中心创建 AI 评课任务，内容分析节点成功下载临时字幕、执行有限重试，并在隔离的
+  不可达占位 LLM 地址上以 `failed` 终止；确认任务发布、消费、执行节点、重试和 MySQL
+  终态链路有效，测试未调用真实外部模型。
+- 最新全量验证：`uv run python -m pytest -q`，402 项通过；`uv lock --check`、Ruff、
+  Compileall 和 `git diff --check` 通过。
+- Dependabot PR #5、#7、#8 均只修改 `pyproject.toml` 而未同步 `uv.lock`，当前质量检查
+  因锁文件不一致失败，不能直接合并。MoviePy #5 还涉及 1.x 到 2.x 的破坏性 API 变化，
+  现有代码仍导入已移除的 `moviepy.editor`，必须先迁移代码并执行媒体回归；ModelScope #7
+  和 Transformers #8 的目标版本可独立导入，但仍需更新锁文件后执行与 Torch、FunASR、
+  GLM-ASR 模型组合的加载和推理验证。
 
 ## 剩余风险
 
 - 兼容 Schema 仍会产生 Pydantic V2 弃用警告，应在 Pydantic V3 前完成现代化。
 - 最新 Starlette 测试客户端提示 `httpx` 集成将弃用并迁移到 `httpx2`。
 - 可选模型、FFmpeg 构建、Ultralytics 部署和厂商数据库驱动需要按部署环境单独审查许可证。
-- GPU Worker 完整镜像构建和实际 CUDA 推理仍需在可访问 Docker Hub 且有 NVIDIA 运行时的
-  Linux 构建机验证。
-- 真实 MySQL、RabbitMQ、ZLMediaKit 和对象存储集成测试仍依赖外部环境。
+- GPU Worker 实际 CUDA 推理仍需在有 NVIDIA Container Toolkit 和兼容 GPU 的 Linux
+  主机验证。
+- 当前冒烟使用临时数据库、消息队列和 S3 兼容服务；长时间运行、断网恢复、消息重复投递、
+  数据库故障切换和生产对象存储兼容性仍需在部门环境验证。
 - 部分旧兼容 API 和模型尚未迁移到统一的新应用服务。
 - 容器仍以 root 用户运行，尚未增加只读文件系统、Linux capability 限制和镜像安全扫描。
 - 回调、下载和流媒体 URL 尚未建立按用途配置的主机或 CIDR 允许列表。
@@ -77,7 +111,7 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 
 ## 下一步
 
-在真实 MySQL、RabbitMQ、ZLMediaKit、对象存储和 NVIDIA 环境执行冒烟测试，并逐项评估
-MoviePy、ModelScope 和 Transformers 大版本升级。通过后发布 `v0.1.0-internal.1` 供部门
-内部验证，并决定升级 GitHub Pro 或将仓库转入公司 Organization，以启用 Private 仓库
-分支保护。
+在部门测试环境部署当前镜像，执行长时间录制、停止后处理、重复消息和服务重启恢复测试。
+MoviePy、ModelScope 和 Transformers 升级分别建立兼容迁移分支，更新锁文件并完成真实媒体
+与模型回归后再合并。通过后发布 `v0.1.0-internal.1` 供部门内部验证，并决定升级 GitHub Pro
+或将仓库转入公司 Organization，以启用 Private 仓库分支保护。

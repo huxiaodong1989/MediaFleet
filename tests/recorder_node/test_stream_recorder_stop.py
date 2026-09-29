@@ -268,6 +268,47 @@ async def test_record_stream_capacity_failure_does_not_stop_existing_zlm_recordi
     assert recorder.active_recording_count() == 1
 
 
+@pytest.mark.asyncio
+async def test_record_stream_zlm_start_rejection_fails_without_stop() -> None:
+    """ZLM 明确拒绝 startRecord 时应进入失败尾链路，且不能误发 stopRecord。"""
+
+    recorder = StreamRecorder.__new__(StreamRecorder)
+    recorder.recording_tasks = {}
+    recorder.max_recordings = 1
+    recorder._report_flow_trace = lambda *args, **kwargs: _async_result(None)
+    recorder._start_zlm_recording_with_app = lambda stream_id, app: _async_result(False)
+
+    stop_calls = []
+    recorder._stop_zlm_recording_with_app = (
+        lambda stream_id, app: _append_async(stop_calls, (stream_id, app), True)
+    )
+    queued_results = []
+
+    async def fake_queue_result(task_id, task_status, **kwargs):
+        queued_results.append((task_id, dict(task_status), kwargs))
+
+    recorder._queue_recording_result = fake_queue_result
+    now = datetime.now()
+    task_status = {
+        "task_id": "record-task-zlm-rejected",
+        "stream_id": "missing-stream",
+        "app": "live",
+        "start_time": now - timedelta(seconds=1),
+        "end_time": None,
+        "errors": [],
+        "extra_params": {},
+    }
+
+    await recorder._record_stream("record-task-zlm-rejected", task_status)
+
+    assert stop_calls == []
+    assert len(queued_results) == 1
+    assert queued_results[0][0] == "record-task-zlm-rejected"
+    assert queued_results[0][1]["zlm_start_recording_accepted"] is False
+    assert "ZLMediaKit拒绝开始录制" in queued_results[0][2]["recording_error"]
+    assert recorder.active_recording_count() == 0
+
+
 async def _async_result(value):
     return value
 

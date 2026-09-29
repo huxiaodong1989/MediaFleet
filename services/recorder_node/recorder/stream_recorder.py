@@ -602,11 +602,19 @@ class StreamRecorder:
             # 开始ZLM录制
             record_result = await self._start_zlm_recording_with_app(stream_id, app)
             task_status["zlm_start_recording_accepted"] = bool(record_result)
+            if not record_result:
+                # startRecord 已被 ZLM 明确拒绝，此时本任务没有启动任何录制。
+                # 不能调用 stopRecord，否则可能误停同一 app/stream 上由其他任务
+                # 启动的录制；直接复用统一结果队列写入 MySQL 失败终态。
+                await self._queue_recording_result(
+                    task_id,
+                    task_status,
+                    recording_error=f"ZLMediaKit拒绝开始录制: {app}/{stream_id}",
+                )
+                return
             activity_monitor = getattr(self, "_zlm_activity_monitor", None)
             if activity_monitor is not None:
                 await activity_monitor.watch(app, stream_id)
-            # if not record_result:
-            #     raise Exception(f"开始录制失败: {stream_id}")
 
             # 计算录制时长
             total_duration = 0

@@ -45,7 +45,9 @@ dependencies = [
     "cos-python-sdk-v5",
 
     # 数据库相关
-    "SQLAlchemy[asyncio]>=2.0.20",
+    # sqlalchemy-utils 0.42.x 仍依赖 SQLAlchemy 2.0 的公开 ORM 实现；2.1 会在
+    # 数据库自动初始化导入阶段触发 AttributeError，服务无法启动。
+    "SQLAlchemy[asyncio]>=2.0.20,<2.1",
     "pymysql>=1.1.0",
     "cryptography>=50.0.0",
     "alembic>=1.12.0",
