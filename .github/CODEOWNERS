@@ -1,0 +1,9 @@
+# 默认代码所有者。新增团队后可将服务目录分配给对应 GitHub Team。
+* @huxiaodong1989
+
+# 发布、安全、契约和数据库变更需要仓库所有者审查。
+/.github/ @huxiaodong1989
+/deploy/ @huxiaodong1989
+/media_platform/contracts/ @huxiaodong1989
+/alembic/ @huxiaodong1989
+/docs/security/ @huxiaodong1989

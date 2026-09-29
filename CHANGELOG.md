@@ -15,6 +15,7 @@ MediaFleet 的重要变更记录在此。项目遵循
 - 控制中心从 MySQL 评课记录读取当前步骤、进度和阶段性结果。
 - 增加 GitHub 中文 Issue 模板、Private 仓库上线清单、Python 3.10–3.12 CI 矩阵、
   Ruff 高置信静态检查、构建和 Compose 校验。
+- 增加 CODEOWNERS，并让 Gitleaks 在首次导入和合并提交场景下扫描完整历史。
 
 ### 修复
 

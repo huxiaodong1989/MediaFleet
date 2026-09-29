@@ -30,7 +30,9 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 生产环境拒绝空值、公开占位符或少于 16 个字符的共享 API Key。
 - 收紧直播录制请求日志，不再输出完整请求体；移除旧媒体切片器中的硬编码示例地址。
 - 增加中文 Bug、功能建议模板和 GitHub Private 仓库上线清单。
+- 增加默认 CODEOWNERS，由仓库所有者审查发布、安全、契约和数据库变更。
 - CI 增加 Python 3.10–3.12 测试矩阵、Ruff 高置信静态检查、构建和 Compose 校验，并固定 uv 版本。
+- 已在 `huxiaodong1989/MediaFleet` 创建 Private 仓库、合并 GitHub 初始提交并推送 `main`。
 
 ## 验证
 
@@ -53,10 +55,10 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 容器仍以 root 用户运行，尚未增加只读文件系统、Linux capability 限制和镜像安全扫描。
 - 回调、下载和流媒体 URL 尚未建立按用途配置的主机或 CIDR 允许列表。
 - 当前内部接口仍使用共享 API Key，尚未提供调用方身份、权限范围、轮换和撤销机制。
-- GitHub Organization、仓库成员、CODEOWNERS、分支保护和 Private 可见性需要在目标仓库创建后配置。
+- 当前仓库属于个人 GitHub Free 账号；GitHub API 明确拒绝为 Private 仓库启用分支保护，需升级 GitHub Pro、转入支持该功能的 Organization，或在改为 Public 后启用。
 
 ## 下一步
 
-确认公司允许使用外网 GitHub 托管并在公司 Organization 创建 Private 仓库；配置成员权限、
-CODEOWNERS、分支保护、Secret scanning 和 Push protection 后再推送。首次 CI 与 Secret Scan
-通过后发布 `v0.1.0-internal.1` 供部门内部验证。
+修复并确认首次 GitHub Actions 全部通过；随后决定升级 GitHub Pro 或将仓库转入公司
+Organization，以启用 Private 仓库分支保护。完成真实基础设施冒烟测试后发布
+`v0.1.0-internal.1` 供部门内部验证。
