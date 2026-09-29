@@ -9,17 +9,58 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
-          version: "latest"
+          version: "0.7.20"
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv lock --check
+      - run: uv run ruff check media_platform services tests
+      - run: uv run python -m compileall media_platform services
+      - run: uv build
+      - name: Validate Docker Compose files
+        shell: bash
+        run: |
+          while IFS= read -r file; do
+            env_file=.env.example
+            if [[ "$file" == *"/quickstart/"* ]]; then
+              env_file=deploy/compose/quickstart/.env.example
+            fi
+            docker compose --env-file "$env_file" -f "$file" config --quiet
+          done < <(find deploy/compose -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.7.20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen
+      - run: uv run python -m pytest -q
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.7.20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: uv sync --frozen
       - run: uv run --with pip-audit pip-audit --progress-spinner off
-      - run: uv run python -m compileall media_platform services
-      - run: uv run python -m pytest -q

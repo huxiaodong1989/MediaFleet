@@ -5,7 +5,8 @@ services:
     image: ${CONTROL_CENTER_IMAGE:-mediafleet-control-center:stable}
     container_name: mediafleet-control-center
     env_file:
-      - ${CONTROL_CENTER_ENV_FILE:-../../.env}
+      - path: ${CONTROL_CENTER_ENV_FILE:-../../.env}
+        required: false
     environment:
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: "8008"

@@ -4,7 +4,8 @@ name: mediafleet-worker-gpu
 x-media-worker-common: &media-worker-common
   image: ${MEDIA_WORKER_IMAGE:-mediafleet-worker:gpu}
   env_file:
-    - ${MEDIA_WORKER_ENV_FILE:-../../.env}
+    - path: ${MEDIA_WORKER_ENV_FILE:-../../.env}
+      required: false
   restart: unless-stopped
   extra_hosts:
     - "host.docker.internal:host-gateway"

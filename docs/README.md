@@ -24,6 +24,7 @@
 
 - [扩展开发指南](development/extending-mediafleet.md)
 - [Docker Compose 部署](deployment/docker-compose.md)
+- [GitHub Private 仓库上线清单](deployment/github-private.md)
 - [配置与密钥管理](security/configuration-and-secrets.md)
 - [依赖许可证审查](security/dependency-licenses.md)
 

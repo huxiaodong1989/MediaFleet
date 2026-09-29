@@ -509,8 +509,7 @@ class CoverExtractor:
             output_file
         ]
 
-        logger.info(f"生成自定义封面: ffmpeg命令已构建")
-        logger.info(f"完整ffmpeg命令: {' '.join(cmd)}")
+        logger.info("生成自定义封面: ffmpeg 参数已构建")
 
         # 检测操作系统
         is_windows = platform.system() == 'Windows'
@@ -609,33 +608,6 @@ class CoverExtractor:
                         if result.stderr:
                             logger.error(f"错误信息: {result.stderr}")
 
-                        # 尝试备用方案：使用shell=True执行命令
-                        logger.info("尝试使用备用方案：shell命令执行")
-                        try:
-                            # 构建shell命令，将vf参数用双引号包围
-                            shell_cmd = f'ffmpeg -y -i "{self.bg_image_path}" -vf "{video_filter}" -frames:v 1 -update 1 "{output_file}"'
-                            logger.info(f"备用shell命令: {shell_cmd}")
-
-                            shell_result = subprocess.run(
-                                shell_cmd,
-                                shell=True,
-                                capture_output=True,
-                                text=True,
-                                timeout=self.FFMPEG_TIMEOUT
-                            )
-
-                            if shell_result.returncode == 0 and os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-                                logger.info(f"备用方案成功生成封面: {output_file}")
-                                return output_file
-                            else:
-                                logger.error(f"备用方案也失败，返回码: {shell_result.returncode}")
-                                if shell_result.stderr:
-                                    logger.error(f"备用方案错误信息: {shell_result.stderr}")
-                        except subprocess.TimeoutExpired:
-                            logger.error("备用方案执行超时")
-                        except Exception as shell_error:
-                            logger.error(f"备用方案执行异常: {str(shell_error)}")
-
                         return None
                 else:
                     # 非Windows环境使用asyncio执行，添加超时控制
@@ -690,34 +662,6 @@ class CoverExtractor:
                             logger.error(f"自定义封面生成失败，返回码: {process.returncode}")
                             if stderr:
                                 logger.error(f"错误信息: {stderr.decode()}")
-
-                            # 尝试备用方案：使用简化的同步命令
-                            logger.info("尝试使用备用方案：简化同步命令")
-                            try:
-                                import subprocess
-                                # 构建shell命令，将vf参数用双引号包围
-                                shell_cmd = f'ffmpeg -y -i "{self.bg_image_path}" -vf "{video_filter}" -frames:v 1 -update 1 "{output_file}"'
-                                logger.info(f"备用shell命令: {shell_cmd}")
-
-                                shell_result = subprocess.run(
-                                    shell_cmd,
-                                    shell=True,
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=self.FFMPEG_TIMEOUT
-                                )
-
-                                if shell_result.returncode == 0 and os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-                                    logger.info(f"备用方案成功生成封面: {output_file}")
-                                    return output_file
-                                else:
-                                    logger.error(f"备用方案也失败，返回码: {shell_result.returncode}")
-                                    if shell_result.stderr:
-                                        logger.error(f"备用方案错误信息: {shell_result.stderr}")
-                            except subprocess.TimeoutExpired:
-                                logger.error("备用方案执行超时")
-                            except Exception as shell_error:
-                                logger.error(f"备用方案执行异常: {str(shell_error)}")
 
                             return None
 

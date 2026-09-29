@@ -119,7 +119,6 @@ class RealTimeExtractAudio:
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         bufsize=10**8,  # 使用大缓冲区
-                        shell=is_windows  # Windows下需要shell=True
                     )
 
                     # 设置块大小
@@ -352,7 +351,6 @@ class RealTimeExtractAudio:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 bufsize=10**8,  # 使用大缓冲区
-                shell=is_windows  # Windows下需要shell=True
             )
 
             # 监控FFmpeg输出

@@ -20,7 +20,8 @@ services:
     image: ${CONTROL_CENTER_IMAGE:-mediafleet-control-center:stable}
     container_name: mediafleet-control-center
     env_file:
-      - ${CONTROL_CENTER_ENV_FILE:-../../.env}
+      - path: ${CONTROL_CENTER_ENV_FILE:-../../.env}
+        required: false
     environment:
       <<: *common-environment
       SERVICE_PORT: "8008"
@@ -41,7 +42,8 @@ services:
     image: ${MEDIA_WORKER_IMAGE:-mediafleet-worker:stable}
     container_name: mediafleet-worker
     env_file:
-      - ${MEDIA_WORKER_ENV_FILE:-../../.env}
+      - path: ${MEDIA_WORKER_ENV_FILE:-../../.env}
+        required: false
     environment:
       <<: *common-environment
       SERVICE_PORT: "8009"
@@ -71,7 +73,8 @@ services:
     image: ${CONTENT_ANALYSIS_IMAGE:-mediafleet-content-analysis:stable}
     container_name: content-analysis
     env_file:
-      - ${CONTENT_ANALYSIS_ENV_FILE:-../../.env}
+      - path: ${CONTENT_ANALYSIS_ENV_FILE:-../../.env}
+        required: false
     environment:
       <<: *common-environment
       SERVICE_PORT: "8012"
@@ -96,7 +99,8 @@ services:
     image: ${RECORDER_NODE_IMAGE:-mediafleet-recorder-node:stable}
     container_name: mediafleet-recorder-node
     env_file:
-      - ${RECORDER_NODE_ENV_FILE:-../../.env}
+      - path: ${RECORDER_NODE_ENV_FILE:-../../.env}
+        required: false
     environment:
       <<: *common-environment
       SERVICE_PORT: "8010"

@@ -8,7 +8,6 @@ requires-python = ">=3.10,<3.13"
 keywords = ["media", "recording", "rabbitmq", "zlmediakit", "asr"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -104,6 +103,13 @@ dm = [
     "dmsqlalchemy>=2.0.12",
 ]
 
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["media_platform*", "services*"]
+
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
@@ -120,6 +126,7 @@ dev-dependencies = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ffmpeg-python>=0.2.0",
+    "ruff>=0.13,<1",
 ]
 
 # 覆盖问题依赖版本（Windows 编译兼容性）
@@ -134,3 +141,10 @@ asyncio_mode = "auto"
 markers = [
     "integration: 需要数据库或其他基础设施的集成测试",
 ]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+# 先将语法错误、未定义名称等高置信问题设为合并门槛；旧代码风格问题分批治理。
+select = ["E9", "F63", "F7", "F82"]

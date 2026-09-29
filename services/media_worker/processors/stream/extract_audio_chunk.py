@@ -12,8 +12,8 @@ from collections import namedtuple
 
 # 配置参数
 class Config:
-    VIDEO_SOURCE = "rtmp://127.0.0.1/live/aaa"  # 直播源地址
-    API_ENDPOINT = "http://localhost:5000/api/SecureResource/chunk"  # 分块上传接口
+    VIDEO_SOURCE = None  # 直播源地址必须由任务参数提供
+    API_ENDPOINT = None  # 分块上传接口必须由任务参数提供
     CALLBACK_URL = None  # 回调地址，任务完成后调用
     START_TIME = None  # 开始时间 (datetime对象或ISO格式字符串)
     END_TIME = None  # 结束时间 (datetime对象或ISO格式字符串)
@@ -48,6 +48,8 @@ class ExtractAudioChunk:
         # 允许通过参数覆盖配置
         self.video_source = video_source or Config.VIDEO_SOURCE
         self.api_endpoint = api_endpoint or Config.API_ENDPOINT
+        if not self.video_source or not self.api_endpoint:
+            raise ValueError("video_source 和 api_endpoint 必须由任务参数提供")
         self.callback_url = callback_url or Config.CALLBACK_URL
         self.chunk_duration = chunk_duration or Config.CHUNK_DURATION
 

@@ -1,0 +1,57 @@
+name: 缺陷报告
+description: 报告可以稳定复现的功能或部署问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请勿提交密钥、内网地址、带签名 URL、客户数据或未经脱敏的日志。安全问题请按 SECURITY.md 私下报告。
+  - type: dropdown
+    id: component
+    attributes:
+      label: 影响组件
+      options:
+        - control-center
+        - recorder-node
+        - media-worker
+        - content-analysis
+        - Docker / Compose
+        - 文档或开发工具
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本或提交
+      placeholder: v0.1.0-internal.1 或提交 SHA
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 请提供最小、稳定、已经脱敏的复现步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为与脱敏日志
+    validations:
+      required: true
+  - type: checkboxes
+    id: hygiene
+    attributes:
+      label: 信息安全确认
+      options:
+        - label: 我已确认内容不包含凭据、内网地址、签名 URL、客户数据或其他敏感信息。
+          required: true

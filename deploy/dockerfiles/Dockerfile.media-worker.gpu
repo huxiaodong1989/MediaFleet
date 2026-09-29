@@ -34,14 +34,14 @@ ENV PYTORCH_INDEX_URL=${PYTORCH_INDEX_URL}
 
 # 当前 uv.lock 固定的是 CPU wheel。GPU 镜像先安装除 Torch 外的媒体依赖，
 # 再从 CUDA wheel 源一次性安装 Torch 族，避免“先下载 CPU、再重新下载 CUDA”。
-# uv 缓存挂载到 BuildKit cache，Jenkins 重建或重试时可以复用已下载的大文件。
+# uv 缓存挂载到 BuildKit cache，CI 重建或重试时可以复用已下载的大文件。
 RUN --mount=type=cache,id=media-worker-gpu-uv,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra media-worker \
       --no-install-package torch \
       --no-install-package torchaudio \
       --no-install-package torchvision
 
-# 只执行一次 CUDA Torch 安装；PYTORCH_INDEX_URL 可在 Jenkins 中切换为内网镜像。
+# 只执行一次 CUDA Torch 安装；PYTORCH_INDEX_URL 可由 CI 或部署环境覆盖。
 RUN --mount=type=cache,id=media-worker-gpu-uv,target=/root/.cache/uv \
     uv pip install --python .venv/bin/python \
     torch==2.9.1 \

@@ -103,7 +103,7 @@ async def get_local_video_imgs(file_url: str,interval: int = 5):
     video_process=VideoProcess()
     # video_process.set_callback(task_data.get('params').get('callback_url'))
     # 每{interval}秒提取一帧
-    image_paths =await video_processor.get_video_imgs(file_path, interval)
+    image_paths = await video_process.get_video_imgs(file_path, interval)
     print(f"提取了{len(image_paths)}个视频帧")
     # 上传图片到COS
     image_urls = []

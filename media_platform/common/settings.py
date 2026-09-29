@@ -25,6 +25,14 @@ except ImportError:
 # 创建配置专用的日志记录器
 logger = logging.getLogger("config")
 
+_UNSAFE_PRODUCTION_SECRETS = {
+    "",
+    "change-me",
+    "changeme",
+    "replace-me",
+    "replace_with_secure_value",
+}
+
 
 _PydanticBaseSettings = BaseSettings
 
@@ -911,6 +919,18 @@ class Settings(BaseSettings):
         self._init_nested_settings()
         # 同步嵌套配置到兼容性属性
         self._sync_compatibility_settings()
+        self._validate_production_security()
+
+    def _validate_production_security(self) -> None:
+        """阻止生产环境使用公开示例中的共享 API 密钥。"""
+        if self.env != "production":
+            return
+
+        api_key = str(self.API_KEY or "").strip()
+        if api_key.lower() in _UNSAFE_PRODUCTION_SECRETS or len(api_key) < 16:
+            raise ValueError(
+                "production 环境必须配置至少 16 个字符且不使用公开占位符的 API_KEY"
+            )
 
     def _init_nested_settings(self):
         """初始化嵌套配置对象，手动传递环境变量"""

@@ -1,0 +1,34 @@
+name: 功能建议
+description: 提议新的平台能力、接口或运维改进
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 描述当前使用场景、限制及受影响角色。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 说明期望行为，以及涉及的服务、接口、消息或数据变化。
+    validations:
+      required: true
+  - type: textarea
+    id: reliability
+    attributes:
+      label: 可靠性与兼容性影响
+      description: 说明幂等、重试、升级、回滚、权限和许可证方面的影响。
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: 架构边界确认
+      options:
+        - label: 控制中心不会执行 FFmpeg、读取录制节点本地目录或加载媒体/AI 模型。
+          required: true
+        - label: 持久事实会保存在 MySQL，不仅依赖内存、Redis 或 RabbitMQ。
+          required: true

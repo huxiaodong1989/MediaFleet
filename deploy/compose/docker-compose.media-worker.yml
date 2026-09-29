@@ -5,7 +5,8 @@ services:
     image: ${MEDIA_WORKER_IMAGE:-mediafleet-worker:stable}
     container_name: mediafleet-worker
     env_file:
-      - ${MEDIA_WORKER_ENV_FILE:-../../.env}
+      - path: ${MEDIA_WORKER_ENV_FILE:-../../.env}
+        required: false
     environment:
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: "8009"

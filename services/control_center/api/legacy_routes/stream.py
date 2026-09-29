@@ -186,7 +186,12 @@ async def start_stream_recording(
     """
     # 设置请求跟踪ID
     trace_id = setup_request_id()
-    logger.info("收到直播流录制请求: %s, traceId: %s", request.model_dump(), trace_id)
+    logger.info(
+        "收到直播流录制请求: app=%s, stream_id=%s, traceId=%s",
+        request.app,
+        request.stream_id,
+        trace_id,
+    )
 
     reservation_saved = False
     command_published = False

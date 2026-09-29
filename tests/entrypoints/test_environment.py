@@ -34,6 +34,28 @@ def test_settings_ignores_empty_service_port(monkeypatch) -> None:
     assert settings.port == 8008
 
 
+@pytest.mark.parametrize("api_key", ["", "change-me", "replace-me", "short-key"])
+def test_production_rejects_unsafe_api_key(monkeypatch, api_key: str) -> None:
+    from media_platform.common.settings import Settings
+
+    monkeypatch.setenv("IGNORE_ENV_FILE", "1")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("API_KEY", api_key)
+
+    with pytest.raises(ValueError, match="production 环境必须配置"):
+        Settings()
+
+
+def test_production_accepts_non_placeholder_api_key(monkeypatch) -> None:
+    from media_platform.common.settings import Settings
+
+    monkeypatch.setenv("IGNORE_ENV_FILE", "1")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("API_KEY", "test-production-key-1234567890")
+
+    assert Settings().env == "production"
+
+
 def test_load_env_file_sets_missing_values_and_preserves_existing(
     tmp_path, monkeypatch
 ) -> None:

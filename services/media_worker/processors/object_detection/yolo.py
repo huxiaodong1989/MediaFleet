@@ -1,4 +1,5 @@
 import asyncio
+import math
 import os
 from collections import defaultdict
 import time
@@ -66,7 +67,12 @@ class Tracker:
             for detection in detections:
                 dist = []
                 for centroid in object_centroids:
-                    dist.append(np.sqrt((detection[0] - centroid[0])**2 + (detection[1] - centroid[1])**2))
+                    dist.append(
+                        math.hypot(
+                            detection[0] - centroid[0],
+                            detection[1] - centroid[1],
+                        )
+                    )
                 distances.append(dist)
 
             # 简单的最近邻匹配
@@ -312,6 +318,7 @@ class ObjectDetection:
         处理图片，生成包含所有目标检测的PNG图片
         """
         import cv2
+        import numpy as np
         import supervision as sv
 
         img_path=await self.storage_service.download_file(img_url)
