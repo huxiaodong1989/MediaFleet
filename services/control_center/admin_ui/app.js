@@ -10,8 +10,11 @@
     selectedPrompt: null,
     promptDraftContent: null,
     selectedPromptStepCode: null,
+    imagePromptVersions: [],
+    selectedImagePrompt: null,
+    imagePromptDraftContent: null,
   };
-  const viewTitles = { overview: "运行总览", tasks: "任务中心", nodes: "节点资源", bindings: "流绑定", prompts: "AI评课提示词" };
+  const viewTitles = { overview: "运行总览", tasks: "任务中心", nodes: "节点资源", bindings: "流绑定", prompts: "AI评课提示词", "image-prompts": "图像分析提示词" };
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => Array.from(document.querySelectorAll(selector));
   const promptEditorSelectors = [
@@ -24,6 +27,14 @@
     "#prompt-step-max-tokens",
     "#prompt-step-system",
     "#prompt-step-user",
+  ];
+  const imagePromptEditorSelectors = [
+    "#image-prompt-model",
+    "#image-prompt-temperature",
+    "#image-prompt-max-tokens",
+    "#image-prompt-output-schema",
+    "#image-prompt-metric-definition",
+    "#image-prompt-text",
   ];
   const apiKey = $("#api-key");
   apiKey.value = sessionStorage.getItem("media-admin-api-key") || "";
@@ -103,6 +114,7 @@
     if (view === "tasks") loadTasks();
     if (view === "bindings") loadBindings();
     if (view === "prompts") loadPrompts();
+    if (view === "image-prompts") loadImagePrompts();
   }
 
   function renderOverview(data) {
@@ -252,6 +264,67 @@
     return JSON.parse(JSON.stringify(state.promptDraftContent));
   }
 
+  function renderImagePrompts(items) {
+    state.imagePromptVersions = items || [];
+    $("#image-prompt-result-count").textContent = `共 ${state.imagePromptVersions.length} 个版本`;
+    if (!state.imagePromptVersions.length) {
+      state.selectedImagePrompt = null;
+      state.imagePromptDraftContent = null;
+      $("#image-prompts-table").innerHTML = `<div class="empty-message">暂无图像提示词版本</div>`;
+      $("#image-prompt-editor-title").textContent = "选择版本查看";
+      $("#image-prompt-editor-mode").textContent = "—";
+      $("#image-prompt-editor-empty").hidden = false;
+      $("#image-prompt-editor-fields").hidden = true;
+      ["#image-prompt-new", "#image-prompt-save", "#image-prompt-publish"].forEach((selector) => { $(selector).disabled = true; });
+      return;
+    }
+    $("#image-prompts-table").classList.remove("empty-state");
+    $("#image-prompts-table").innerHTML = `<table><thead><tr><th>版本</th><th>状态</th><th>模型</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${state.imagePromptVersions.map((item) => `<tr><td><strong>v${item.version}</strong><div class="mono">${escapeHtml(item.id)}</div></td><td>${statusPill(item.status)}</td><td>${escapeHtml(item.content?.model)}</td><td>${formatDate(item.updated_at)}</td><td><div class="table-actions"><button class="table-action" data-image-prompt-action="edit" data-image-prompt-id="${escapeHtml(item.id)}">查看${item.status === "DRAFT" ? " / 编辑" : ""}</button><button class="table-action" data-image-prompt-action="clone" data-image-prompt-id="${escapeHtml(item.id)}">复制草稿</button></div></td></tr>`).join("")}</tbody></table>`;
+  }
+
+  function assertImagePromptEditorDom() {
+    const missing = imagePromptEditorSelectors.filter((selector) => !$(selector));
+    if (missing.length) throw new Error("页面静态资源版本不一致，请按 Ctrl+F5 强制刷新后重试");
+  }
+
+  function selectImagePrompt(item) {
+    assertImagePromptEditorDom();
+    state.selectedImagePrompt = item;
+    state.imagePromptDraftContent = JSON.parse(JSON.stringify(item.content || {}));
+    $("#image-prompt-editor-title").textContent = `v${item.version} · ${item.status}`;
+    $("#image-prompt-editor-mode").textContent = item.status === "DRAFT" ? "草稿可编辑" : "只读版本";
+    $("#image-prompt-editor-empty").hidden = true;
+    $("#image-prompt-editor-fields").hidden = false;
+    $("#image-prompt-model").value = state.imagePromptDraftContent.model || "";
+    $("#image-prompt-temperature").value = state.imagePromptDraftContent.temperature ?? 0.2;
+    $("#image-prompt-max-tokens").value = state.imagePromptDraftContent.max_tokens ?? 4096;
+    $("#image-prompt-output-schema").value = state.imagePromptDraftContent.output_schema_version || "";
+    $("#image-prompt-metric-definition").value = state.imagePromptDraftContent.metric_definition_version || "";
+    $("#image-prompt-text").value = state.imagePromptDraftContent.prompt || "";
+    setImagePromptEditorAccess(item.status === "DRAFT");
+    $("#image-prompt-new").disabled = false;
+    $("#image-prompt-save").disabled = item.status !== "DRAFT";
+    $("#image-prompt-publish").textContent = item.status === "ARCHIVED" ? "重新发布此版本" : item.status === "DRAFT" ? "保存并发布" : "当前已发布";
+    $("#image-prompt-publish").disabled = item.status === "PUBLISHED";
+  }
+
+  function setImagePromptEditorAccess(editable) {
+    imagePromptEditorSelectors.forEach((selector) => { $(selector).readOnly = !editable; });
+  }
+
+  function syncImagePromptEditor() {
+    if (!state.imagePromptDraftContent) throw new Error("请先选择图像提示词版本");
+    if (state.selectedImagePrompt?.status === "DRAFT") {
+      state.imagePromptDraftContent.prompt = $("#image-prompt-text").value;
+      state.imagePromptDraftContent.model = $("#image-prompt-model").value.trim();
+      state.imagePromptDraftContent.temperature = Number($("#image-prompt-temperature").value);
+      state.imagePromptDraftContent.max_tokens = Number($("#image-prompt-max-tokens").value);
+      state.imagePromptDraftContent.output_schema_version = $("#image-prompt-output-schema").value.trim();
+      state.imagePromptDraftContent.metric_definition_version = $("#image-prompt-metric-definition").value.trim();
+    }
+    return JSON.parse(JSON.stringify(state.imagePromptDraftContent));
+  }
+
   function formatDate(value) { return value ? new Date(value).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"; }
   function formatDateTimeLocal(date, time) {
     const year = date.getFullYear();
@@ -304,6 +377,11 @@
     try { const items = await request(`/api/v1/admin/content-prompts?school_code=${encodeURIComponent(schoolCode)}`); renderPrompts(items); if (items.length) selectPrompt(items[0]); setSyncTime(); } catch (error) { showNotice(`提示词读取失败：${error.message}`, true); }
   }
 
+  async function loadImagePrompts() {
+    const schoolCode = $("#image-prompt-filters").elements.school_code.value.trim() || "GLOBAL";
+    try { const items = await request(`/api/v1/admin/image-prompts?school_code=${encodeURIComponent(schoolCode)}`); renderImagePrompts(items); if (items.length) selectImagePrompt(items[0]); setSyncTime(); } catch (error) { showNotice(`图像提示词读取失败：${error.message}`, true); }
+  }
+
   function promptBody(content) {
     const form = $("#prompt-filters");
     return { school_code: form.elements.school_code.value.trim() || "GLOBAL", operator: form.elements.operator.value.trim() || "admin-console", content };
@@ -321,6 +399,23 @@
     } catch (error) { showNotice(`提示词操作失败：${error.message}`, true); }
   }
 
+  function imagePromptScope() {
+    return $("#image-prompt-filters").elements.school_code.value.trim() || "GLOBAL";
+  }
+
+  async function imagePromptAction(action, id) {
+    const item = state.imagePromptVersions.find((entry) => entry.id === id);
+    try {
+      if (action === "edit") { selectImagePrompt(item); return; }
+      if (action === "clone") {
+        const created = await promptRequest(`/api/v1/admin/image-prompts/${encodeURIComponent(id)}/clone`, "POST", { school_code: imagePromptScope() });
+        showNotice("已复制为图像提示词草稿");
+        await loadImagePrompts();
+        selectImagePrompt(created);
+      }
+    } catch (error) { showNotice(`图像提示词操作失败：${error.message}`, true); }
+  }
+
   async function taskAction(action, taskId) { try { await request(`/api/v1/admin/tasks/${encodeURIComponent(taskId)}/${action === "retry" ? "retry" : "callback/retry"}`, { method: "POST" }); showNotice(action === "retry" ? "任务已重置为待发布" : "业务回调已重新发送"); loadTasks(); } catch (error) { showNotice(`操作失败：${error.message}`, true); } }
 
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => go(item.dataset.view)));
@@ -330,12 +425,17 @@
   $("#task-filters").addEventListener("submit", (event) => { event.preventDefault(); state.pages.tasks = 1; loadTasks(); });
   $("#binding-filters").addEventListener("submit", (event) => { event.preventDefault(); state.pages.bindings = 1; loadBindings(); });
   $("#prompt-filters").addEventListener("submit", (event) => { event.preventDefault(); loadPrompts(); });
+  $("#image-prompt-filters").addEventListener("submit", (event) => { event.preventDefault(); loadImagePrompts(); });
   $("#tasks-table").addEventListener("click", (event) => { const button = event.target.closest("button[data-action]"); if (button) taskAction(button.dataset.action, button.dataset.taskId); });
   $("#prompts-table").addEventListener("click", (event) => { const button = event.target.closest("button[data-prompt-action]"); if (button) promptAction(button.dataset.promptAction, button.dataset.promptId); });
+  $("#image-prompts-table").addEventListener("click", (event) => { const button = event.target.closest("button[data-image-prompt-action]"); if (button) imagePromptAction(button.dataset.imagePromptAction, button.dataset.imagePromptId); });
   $("#prompt-step-tabs")?.addEventListener("click", (event) => { const button = event.target.closest("button[data-prompt-step]"); if (!button) return; syncPromptEditor(); state.selectedPromptStepCode = button.dataset.promptStep; renderPromptStepTabs(); renderPromptStep(); setPromptEditorAccess(state.selectedPrompt?.status === "DRAFT"); });
   $("#prompt-new").addEventListener("click", async () => { try { const content = syncPromptEditor(); const created = await promptRequest("/api/v1/admin/content-prompts/drafts", "POST", promptBody(content)); showNotice("已复制为新草稿，可分别修改八个步骤"); await loadPrompts(); selectPrompt(created); } catch (error) { showNotice(`新建草稿失败：${error.message}`, true); } });
   $("#prompt-save").addEventListener("click", async () => { if (!state.selectedPrompt || state.selectedPrompt.status !== "DRAFT") { showNotice("只有草稿版本允许保存", true); return; } try { const content = syncPromptEditor(); const saved = await promptRequest(`/api/v1/admin/content-prompts/${encodeURIComponent(state.selectedPrompt.id)}`, "PUT", { operator: $("#prompt-filters").elements.operator.value.trim() || "admin-console", content }); showNotice("八步提示词草稿已保存"); await loadPrompts(); selectPrompt(saved); } catch (error) { showNotice(`保存失败：${error.message}`, true); } });
   $("#prompt-publish").addEventListener("click", async () => { if (!state.selectedPrompt || state.selectedPrompt.status === "PUBLISHED") return; try { const operator = $("#prompt-filters").elements.operator.value.trim() || "admin-console"; if (state.selectedPrompt.status === "DRAFT") { const content = syncPromptEditor(); await promptRequest(`/api/v1/admin/content-prompts/${encodeURIComponent(state.selectedPrompt.id)}`, "PUT", { operator, content }); } await promptRequest(`/api/v1/admin/content-prompts/${encodeURIComponent(state.selectedPrompt.id)}/publish`, "POST", { operator }); showNotice(state.selectedPrompt.status === "ARCHIVED" ? "历史版本已重新发布，回滚完成" : "草稿已保存并发布"); loadPrompts(); } catch (error) { showNotice(`发布失败：${error.message}`, true); } });
+  $("#image-prompt-new").addEventListener("click", async () => { if (!state.selectedImagePrompt) return; try { const created = await promptRequest(`/api/v1/admin/image-prompts/${encodeURIComponent(state.selectedImagePrompt.id)}/clone`, "POST", { school_code: imagePromptScope() }); showNotice("已复制为图像提示词草稿"); await loadImagePrompts(); selectImagePrompt(created); } catch (error) { showNotice(`新建图像提示词草稿失败：${error.message}`, true); } });
+  $("#image-prompt-save").addEventListener("click", async () => { if (!state.selectedImagePrompt || state.selectedImagePrompt.status !== "DRAFT") { showNotice("只有草稿版本允许保存", true); return; } try { const saved = await promptRequest(`/api/v1/admin/image-prompts/${encodeURIComponent(state.selectedImagePrompt.id)}`, "PUT", { school_code: imagePromptScope(), expected_hash: state.selectedImagePrompt.content_hash, content: syncImagePromptEditor() }); showNotice("图像提示词草稿已保存"); await loadImagePrompts(); selectImagePrompt(saved); } catch (error) { showNotice(`保存失败：${error.message}`, true); } });
+  $("#image-prompt-publish").addEventListener("click", async () => { if (!state.selectedImagePrompt || state.selectedImagePrompt.status === "PUBLISHED") return; try { let current = state.selectedImagePrompt; if (current.status === "DRAFT") current = await promptRequest(`/api/v1/admin/image-prompts/${encodeURIComponent(current.id)}`, "PUT", { school_code: imagePromptScope(), expected_hash: current.content_hash, content: syncImagePromptEditor() }); await promptRequest(`/api/v1/admin/image-prompts/${encodeURIComponent(current.id)}/publish`, "POST", { school_code: imagePromptScope(), expected_hash: current.content_hash }); showNotice(state.selectedImagePrompt.status === "ARCHIVED" ? "图像提示词历史版本已重新发布" : "图像提示词草稿已保存并发布"); loadImagePrompts(); } catch (error) { showNotice(`发布失败：${error.message}`, true); } });
   $("#overview-date").textContent = new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
   setDefaultTaskDateRange();
   loadOverview();

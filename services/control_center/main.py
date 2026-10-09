@@ -37,6 +37,7 @@ from services.control_center.api.legacy_routes.stream import (
     router as legacy_stream_router,
 )
 from services.control_center.api.legacy_routes.video import router as legacy_video_router
+from services.control_center.api.image_prompts import router as image_prompt_router
 from services.control_center.application import (
     ControlCenterRuntime,
     build_control_center_runtime,
@@ -84,6 +85,7 @@ def create_control_center_app(
 
     application = create_service_app(SERVICE_INFO, lifespan=lifespan)
     application.include_router(admin_router)
+    application.include_router(image_prompt_router)
     application.include_router(node_heartbeat_router)
     application.include_router(node_selection_router)
     application.include_router(recording_command_router)

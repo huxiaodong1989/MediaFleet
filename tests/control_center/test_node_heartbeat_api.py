@@ -118,6 +118,51 @@ def test_node_heartbeat_api_requires_internal_api_key(tmp_path):
         engine.dispose()
 
 
+def test_node_heartbeat_api_accepts_image_analysis_capacity(tmp_path):
+    engine, factory, runtime = _runtime(tmp_path)
+    app = create_control_center_app(lambda: runtime)
+    payload = {
+        "node_code": "image-analysis-01",
+        "node_name": "图像分析01",
+        "node_type": "IMAGE_ANALYSIS",
+        "status": "ONLINE",
+        "weight": 100,
+        "capabilities": ["image.three_rates.analyze"],
+        "capacity": {
+            "processing_tasks": 2,
+            "max_concurrent_classrooms": 64,
+            "stages": {
+                "classroom": {"active": 2, "limit": 64},
+                "ffmpeg": {"active": 1, "limit": 16},
+            },
+        },
+        "readiness": "READY",
+        "readiness_details": {"consumer_ready": True},
+        "updated_by": "image-analysis",
+    }
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/nodes/heartbeat",
+                json=payload,
+                headers={"X-API-Key": runtime.api_key},
+            )
+
+        assert response.status_code == 200
+        with factory() as session:
+            node = session.get(MediaNodeModel, response.json()["node_id"])
+        assert node is not None
+        assert node.node_type == "IMAGE_ANALYSIS"
+        assert node.readiness_status == "READY"
+        assert node.capacity_config["max_concurrent_classrooms"] == 64
+        assert node.capacity_config["stages"]["classroom"] == {
+            "active": 2,
+            "limit": 64,
+        }
+    finally:
+        engine.dispose()
+
+
 def test_node_heartbeat_api_rejects_same_code_with_different_live_agent(tmp_path):
     engine, factory, runtime = _runtime(tmp_path)
     app = create_control_center_app(lambda: runtime)
@@ -198,5 +243,6 @@ def test_node_heartbeat_api_openapi_exposes_examples(tmp_path):
         assert operation["security"] == [{"APIKeyHeader": []}]
         assert heartbeat_schema["examples"][0]["node_type"] == "RECORDER"
         assert heartbeat_schema["examples"][1]["node_type"] == "WORKER"
+        assert heartbeat_schema["examples"][2]["node_type"] == "IMAGE_ANALYSIS"
     finally:
         engine.dispose()

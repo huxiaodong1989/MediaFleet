@@ -22,6 +22,7 @@ class MediaNodeType(StrEnum):
     RECORDER = "RECORDER"
     WORKER = "WORKER"
     CONTENT_ANALYSIS = "CONTENT_ANALYSIS"
+    IMAGE_ANALYSIS = "IMAGE_ANALYSIS"
 
 
 class MediaNodeStatus(StrEnum):

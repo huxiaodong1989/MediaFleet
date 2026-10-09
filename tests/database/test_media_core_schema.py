@@ -24,6 +24,9 @@ from media_platform.infrastructure.database.types import PortableJSON
 from media_platform.infrastructure.database.models import (  # noqa: F401
     ContentEvaluationRecordModel,
     ContentEvaluationStepModel,
+    ImageFrameModel,
+    ImageSampleModel,
+    ImageVideoModel,
 )
 
 
@@ -40,7 +43,12 @@ CONTENT_ANALYSIS_TABLES = {
     "content_evaluation_step",
     "prompt_version",
 }
-APPLICATION_TABLES = CORE_TABLES | CONTENT_ANALYSIS_TABLES
+IMAGE_ANALYSIS_TABLES = {
+    "image_analysis_video",
+    "image_analysis_sample",
+    "image_analysis_frame",
+}
+APPLICATION_TABLES = CORE_TABLES | CONTENT_ANALYSIS_TABLES | IMAGE_ANALYSIS_TABLES
 AUDIT_COLUMNS = {"cjr", "xgr", "xxm", "cjsj", "xgsj"}
 NODE_AUDIT_COLUMNS = {"cjr", "xgr", "cjsj", "xgsj"}
 
@@ -121,14 +129,17 @@ def test_development_auto_init_creates_current_tables():
         engine.dispose()
 
 
-def test_alembic_has_one_clean_baseline():
+def test_alembic_has_clean_baseline_and_image_analysis_revision():
     config = Config(str(ROOT / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20260928_0001"]
+    assert scripts.get_heads() == ["20261009_0002"]
     revision = scripts.get_revision("20260928_0001")
     assert revision is not None
     assert revision.down_revision is None
+    image_revision = scripts.get_revision("20261009_0002")
+    assert image_revision is not None
+    assert image_revision.down_revision == "20260928_0001"
 
 
 def test_alembic_uses_project_version_table():

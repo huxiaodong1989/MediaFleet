@@ -68,6 +68,20 @@ jobs:
       - name: Audit media worker dependencies
         run: uv run --no-sync --with pip-audit pip-audit --progress-spinner off
 
+  image-analysis-dependencies:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.20"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --no-dev --extra image-analysis
+      - name: Validate image analysis runtime imports
+        run: uv run --no-sync python -c "import openai; from services.image_analysis.main import app; print(app.title)"
+
   dependency-audit:
     runs-on: ubuntu-24.04
     steps:

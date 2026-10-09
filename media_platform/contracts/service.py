@@ -13,6 +13,7 @@ class ServiceRole(str, Enum):
     RECORDER_NODE = "recorder_node"
     MEDIA_WORKER = "media_worker"
     CONTENT_ANALYSIS = "content_analysis"
+    IMAGE_ANALYSIS = "image_analysis"
 
 
 class HealthStatus(str, Enum):

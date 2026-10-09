@@ -4,6 +4,7 @@ from hashlib import sha256
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from media_platform.common.redaction import sanitize_url
 from media_platform.application import (
@@ -16,10 +17,12 @@ from media_platform.contracts.content_evaluation import (
     ClassEvaluationRecordResponse,
     ClassEvaluationRequest,
 )
+from media_platform.contracts.image_analysis import ImageAnalysisRequest
 from media_platform.contracts.task import TaskDeliveryChannel
 from services.control_center.api.dependencies import (
     get_admin_service,
     get_content_evaluation_query_service,
+    get_image_intake_service,
     get_task_dispatch_service,
     get_task_query_service,
     verify_internal_api_key,
@@ -30,6 +33,9 @@ from services.control_center.application.admin_service import (
 )
 from services.control_center.application.content_evaluation_query_service import (
     ContentEvaluationQueryService,
+)
+from services.control_center.application.image_analysis_intake_service import (
+    ImageAnalysisIntakeService,
 )
 from services.control_center.api.schemas import (
     TaskCreateRequest,
@@ -46,6 +52,32 @@ router = APIRouter(
     tags=["media-tasks"],
     dependencies=[Depends(verify_internal_api_key)],
 )
+
+
+class ImageAnalysisCreateResponse(BaseModel):
+    taskId: str
+    created: bool
+    status: str
+
+
+@router.post(
+    "/image-analysis",
+    response_model=ImageAnalysisCreateResponse,
+    summary="创建离线课堂图像分析任务",
+)
+def create_image_analysis(
+    request: ImageAnalysisRequest,
+    service: ImageAnalysisIntakeService = Depends(get_image_intake_service),
+) -> ImageAnalysisCreateResponse:
+    try:
+        result = service.create(request)
+    except (ValueError, LookupError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return ImageAnalysisCreateResponse(
+        taskId=result.task_id,
+        created=result.created,
+        status="PENDING" if result.created else "EXISTS",
+    )
 
 
 def _evaluation_idempotency_key(school_code: str, business_task_id: str) -> str:

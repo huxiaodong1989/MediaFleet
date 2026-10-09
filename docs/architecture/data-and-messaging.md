@@ -16,7 +16,7 @@ MySQL 至少保存以下事实：
 - 任务参数、状态、优先级、重试次数、执行节点、租约和结果；
 - 任务或录制命令的待发布、已领取、已发布和失败状态；
 - 录像、音频、封面等媒体产物元数据；
-- 内容分析步骤、提示词版本和恢复检查点。
+- 内容分析步骤、图像分析选源与帧检查点、提示词版本和通知状态。
 
 RabbitMQ 队列深度、消费者连接或 Redis 键都不能单独用来判断业务最终状态。
 
@@ -42,6 +42,8 @@ RTSP URL 不得进入消息正文或日志。
 | --- | --- | --- | --- |
 | 通用任务 | `media.task` | `media-worker.tasks`，默认绑定 `#` | 等价媒体 Worker 竞争消费 |
 | 内容分析 | `content.analysis.task` | `content-analysis.tasks` | 独立内容分析能力池 |
+| 图像分析任务 | `image.analysis.task` | `image-analysis.tasks` | 独立录像抽帧与视觉分析能力池 |
+| 图像分析结果 | `image.analysis.result` | 由部署环境绑定下游队列 | 逐采样点分析结果通知 |
 | 录制命令 | `media.command` | `recorder.<node_id>.commands` | 定向到文件所有者节点 |
 | 媒体事件 | `media.event` | `control-center.media-events` | 完成、失败等领域事件 |
 

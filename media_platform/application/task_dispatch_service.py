@@ -92,12 +92,16 @@ class TaskDispatchService:
             if existing is not None:
                 return existing
         if command.request_id:
-            return repository.get_by_request_id(
-                command.school_code, command.request_id
-            )
+            return repository.get_by_request_id(command.school_code, command.request_id)
         return None
 
-    def create_task(self, command: CreateTaskCommand) -> TaskCreationResult:
+    def create_task(
+        self,
+        command: CreateTaskCommand,
+        *,
+        params_factory: Callable[[Session], dict[str, Any]] | None = None,
+        validate_existing: Callable[[MediaTaskModel], None] | None = None,
+    ) -> TaskCreationResult:
         """幂等创建任务，新任务只写入国标任务表。"""
 
         self._validate_create(command)
@@ -107,6 +111,8 @@ class TaskDispatchService:
                     repository = MediaTaskRepository(session)
                     existing = self._find_existing(repository, command)
                     if existing is not None:
+                        if validate_existing is not None:
+                            validate_existing(existing)
                         LOGGER.info(
                             "媒体任务幂等命中: task_id=%s, task_type=%s, "
                             "request_id=%s, idempotency_key=%s",
@@ -129,7 +135,11 @@ class TaskDispatchService:
                         status=TaskStatus.PENDING.value,
                         priority=command.priority,
                         progress=0,
-                        params=command.params,
+                        params=(
+                            params_factory(session)
+                            if params_factory
+                            else command.params
+                        ),
                         callback_url=command.callback_url,
                         executor_node_id=command.target_node_id,
                         retry_count=0,
@@ -155,6 +165,8 @@ class TaskDispatchService:
                 repository = MediaTaskRepository(session)
                 existing = self._find_existing(repository, command)
                 if existing is not None:
+                    if validate_existing is not None:
+                        validate_existing(existing)
                     return TaskCreationResult(existing.id, created=False)
             raise
 

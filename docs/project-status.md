@@ -2,9 +2,9 @@
 
 ## 当前阶段
 
-MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，可作为公司内部协作
-基线。完成公开发布检查前，仓库、镜像和 Release 产物保持 Private，不将当前版本标记为
-稳定公开版本。
+MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
+`huxiaodong1989/MediaFleet`，当前仍按 Alpha 阶段管理，不将现有提交或镜像标记为稳定版本。
+部门协作通过分支和 Pull Request 进行，仓库所有者负责最终合并。
 
 ## 已完成
 
@@ -29,16 +29,18 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 移除 FFmpeg 的 Shell 拼接执行和完整命令日志，修复旧视频接口与 YOLO 处理器中的未定义名称。
 - 生产环境拒绝空值、公开占位符或少于 16 个字符的共享 API Key。
 - 收紧直播录制请求日志，不再输出完整请求体；移除旧媒体切片器中的硬编码示例地址。
-- 增加中文 Bug、功能建议模板和 GitHub Private 仓库上线清单。
+- 增加中文 Bug、功能建议模板和 GitHub 仓库与分支保护清单。
 - 增加默认 CODEOWNERS，由仓库所有者审查发布、安全、契约和数据库变更。
 - CI 增加 Python 3.10–3.12 测试矩阵、Ruff 高置信静态检查、构建和 Compose 校验，并固定 uv 版本。
-- 已将 Private 仓库迁移到 `mediafleet-dev/MediaFleet` Organization，保留提交历史、PR、
-  Actions 和 Dependabot 配置；本地 `origin` 已同步到新的 Organization 地址。
+- 仓库曾短暂迁入个人 Organization 评估团队权限，随后按当前协作决定迁回个人 Public 仓库；
+  本地 `origin` 已同步到 `huxiaodong1989/MediaFleet`。
 - 首次 GitHub CI 和完整历史 Secret Scan 已通过。
 - 将存在两个低危安全告警的 Torch 2.9.1 升级到 2.13.0，配套固定 Torchvision 0.28.0；
   移除没有 2.13 匹配版本的 Torchaudio，改用 `kaldi-native-fbank` 支持 FunASR 特征提取。
 - CI 增加 `media-worker` 完整可选依赖安装、Torch/FunASR 导入和漏洞审计，防止默认依赖
   测试掩盖媒体栈解析错误。
+- CI 增加 `image-analysis` 可选依赖安装和服务入口导入检查，防止默认依赖测试掩盖视觉
+  模型客户端或图像服务装配错误。
 - GitHub Actions 升级到 Node.js 24 运行时版本，并固定 Ubuntu 24.04 Runner。
 - GPU Worker 对齐 CUDA 12.6、`cu126` wheel 与 Torch 2.13，CPU 与 GPU 镜像使用同一
   Torch/Torchvision 版本对。
@@ -53,6 +55,13 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 修复 ZLMediaKit 明确拒绝 `startRecord` 后录制任务永久停留在 `processing` 的问题；录制
   节点现在立即进入统一失败尾链路、释放本机容量，并避免误发 `stopRecord` 影响同技术流
   上的其他任务。
+- 迁入独立课堂图像分析能力：控制中心提供接单与 Prompt 管理 API，图像服务完成来源筛选、
+  时间轴采样、HTTP seek/整片下载回退、FFmpeg 抽帧、对象存储、多图视觉模型、持久检查点、
+  任务租约、结果通知补发和节点心跳。
+- 新增 `image.analysis.task` 独立任务拓扑和 `image.analysis.result` 可配置结果出口；生产者使用
+  Publisher Confirm，消费者使用手动 ACK、有限重试和 DLQ。
+- 新增图像分析数据库迁移、服务镜像、Quickstart/Portainer Compose、配置示例和中文架构文档；
+  控制中心接单与图像消费者继续默认关闭，避免未配置模型、存储和视频允许列表时误接任务。
 
 ## 验证
 
@@ -87,6 +96,17 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
   终态链路有效，测试未调用真实外部模型。
 - 最新全量验证：`uv run python -m pytest -q`，402 项通过；`uv lock --check`、Ruff、
   Compileall 和 `git diff --check` 通过。
+- 图像分析迁移后的最新全量验证：`671 passed, 3 skipped`；Ruff、Compileall、
+  `uv lock --check`、`git diff --check` 和 17 份 Compose `config --quiet` 通过。
+- 使用隔离 MySQL 8.4、RabbitMQ、MinIO 和 HTTP 视频服务完成图像端到端验证：调用中心接单、
+  图像服务消费、两路视频统一时间点抽帧、多图模型替身、对象存储签名读取、MySQL 终态、
+  结果 Exchange 两条事件和任务队列清空均通过。
+- 在真实 MySQL 8.4 上完成 Alembic `base -> 20261009_0002 -> base` 升降级；同时修复基线
+  回退先删除外键支撑索引导致 MySQL ERROR 1553 的旧问题。
+- 图像分析镜像 `mediafleet-image-analysis:migration-test` 已在 Docker Desktop 完整构建；容器内
+  FFmpeg 5.1.9、服务入口导入和消费者关闭状态下的 `/health` 检查通过。
+- Gitleaks `v8.28.0` 对当前跟踪与未跟踪源码扫描未发现泄漏；旧业务名称、内网地址、缓存
+  文件和凭据模式复核未发现新增问题。
 - Dependabot PR #5、#7、#8 均只修改 `pyproject.toml` 而未同步 `uv.lock`，当前质量检查
   因锁文件不一致失败，不能直接合并。MoviePy #5 还涉及 1.x 到 2.x 的破坏性 API 变化，
   现有代码仍导入已移除的 `moviepy.editor`，必须先迁移代码并执行媒体回归；ModelScope #7
@@ -109,14 +129,18 @@ MediaFleet `0.1.0` 已完成外部 GitHub Private 托管前的第一轮清理，
 - 容器仍以 root 用户运行，尚未增加只读文件系统、Linux capability 限制和镜像安全扫描。
 - 回调、下载和流媒体 URL 尚未建立按用途配置的主机或 CIDR 允许列表。
 - 当前内部接口仍使用共享 API Key，尚未提供调用方身份、权限范围、轮换和撤销机制。
-- 当前仓库位于个人管理的 GitHub Free Organization；GitHub API 仍拒绝为 Private 仓库启用
-  Ruleset。需要将 Organization 升级到 GitHub Team，或在仓库改为 Public 后启用强制保护。
+- 当前仓库已公开，公开历史仍需持续执行 Secret Scan；分支保护和 required checks 需要在
+  GitHub 仓库规则中确认已应用到 `main`。
+- 图像分析尚未在部门真实录像、对象存储和视觉模型上完成容量及故障恢复验收，接单与消费
+  开关保持关闭。结果 Exchange 的下游绑定也必须由部署环境明确配置。
+- 图像结果通知当前冻结带时效的签名读取地址；长时间下游中断可能使补发消息中的地址过期，
+  应在正式启用结果出口前改为按稳定对象键重新签名，或由下游通过受控接口换取读取地址。
 - MoviePy、ModelScope 和 Transformers 仍各有一个大版本升级 PR，需要结合媒体处理、模型
   加载和推理回归测试逐项评估，不能直接自动合并。
 
 ## 下一步
 
-在部门测试环境部署当前镜像，执行长时间录制、停止后处理、重复消息和服务重启恢复测试。
-MoviePy、ModelScope 和 Transformers 升级分别建立兼容迁移分支，更新锁文件并完成真实媒体
-与模型回归后再合并。通过后发布 `v0.1.0-internal.1` 供部门内部验证，并决定是否将
-`mediafleet-dev` 升级到 GitHub Team，或继续使用人工 PR 约定直到仓库转为 Public。
+创建图像分析迁移 PR。合并后先在部门测试环境保持图像接单关闭，使用隔离录像完成真实视觉
+模型、对象存储、下游结果绑定和长时间故障恢复测试；修复通知补发中的签名地址有效期后，
+再依次开启消费者和调用中心接单。MoviePy、ModelScope 和 Transformers 升级继续分别建立
+兼容迁移分支，完成真实媒体与模型回归后再合并。

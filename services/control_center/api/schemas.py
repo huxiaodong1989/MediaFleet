@@ -323,6 +323,29 @@ class NodeHeartbeatRequest(BaseModel):
                     },
                     "updated_by": "media-worker",
                 },
+                {
+                    "node_code": "image-analysis-01",
+                    "node_name": "图像分析节点01",
+                    "node_type": "IMAGE_ANALYSIS",
+                    "weight": 100,
+                    "capabilities": ["image.three_rates.analyze"],
+                    "capacity": {
+                        "worker_prefetch": 4,
+                        "consumer_enabled": True,
+                        "processing_tasks": 1,
+                        "max_concurrent_classrooms": 4,
+                        "stages": {
+                            "classroom": {"active": 1, "limit": 4},
+                            "ffmpeg": {"active": 1, "limit": 4},
+                            "download": {"active": 0, "limit": 1},
+                            "upload": {"active": 1, "limit": 4},
+                            "model": {"active": 1, "limit": 4},
+                        },
+                    },
+                    "readiness": "READY",
+                    "readiness_details": {"consumer_ready": True},
+                    "updated_by": "image-analysis",
+                },
             ]
         },
     )
@@ -333,7 +356,9 @@ class NodeHeartbeatRequest(BaseModel):
         max_length=128,
         description="节点名称；不传时使用节点编号",
     )
-    node_type: Literal["RECORDER", "WORKER", "CONTENT_ANALYSIS"] = Field(
+    node_type: Literal[
+        "RECORDER", "WORKER", "CONTENT_ANALYSIS", "IMAGE_ANALYSIS"
+    ] = Field(
         description="节点类型"
     )
     server_code: str | None = Field(

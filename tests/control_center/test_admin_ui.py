@@ -26,8 +26,8 @@ def test_admin_ui_is_served_by_control_center():
 
     assert response.status_code == 200
     assert "媒体调度中心" in response.text
-    assert "/admin/styles.css?v=20260924-2" in response.text
-    assert "/admin/app.js?v=20260924-2" in response.text
+    assert "/admin/styles.css?v=20261008-1" in response.text
+    assert "/admin/app.js?v=20261008-1" in response.text
     assert response.headers["cache-control"] == "no-store, no-cache, must-revalidate"
     assert response.headers["pragma"] == "no-cache"
     assert response.headers["expires"] == "0"
@@ -39,6 +39,11 @@ def test_admin_ui_is_served_by_control_center():
     assert 'id="prompt-step-system"' in response.text
     assert 'id="prompt-step-user"' in response.text
     assert 'id="prompt-subtitle"' in response.text
+    assert 'data-view="image-prompts"' in response.text
+    assert 'id="view-image-prompts"' in response.text
+    assert 'id="image-prompt-text"' in response.text
+    assert 'id="image-prompt-model"' in response.text
+    assert 'id="image-prompt-output-schema"' in response.text
 
 
 def test_admin_ui_defaults_task_query_to_current_day():
@@ -53,5 +58,8 @@ def test_admin_ui_defaults_task_query_to_current_day():
     assert 'formatDateTimeLocal(today, "23:59")' in response.text
     assert "setDefaultTaskDateRange();" in response.text
     assert "/api/v1/admin/content-prompts" in response.text
+    assert "/api/v1/admin/image-prompts" in response.text
     assert "syncPromptEditor" in response.text
+    assert "syncImagePromptEditor" in response.text
+    assert "expected_hash" in response.text
     assert "页面静态资源版本不一致，请按 Ctrl+F5 强制刷新后重试" in response.text

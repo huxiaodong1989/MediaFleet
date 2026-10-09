@@ -74,7 +74,10 @@ class MediaTaskModel(AuditColumnsMixin, Base):
         String(32),
         nullable=False,
         server_default=text("'MEDIA'"),
-        comment="任务投递通道：MEDIA普通媒体、CONTENT_ANALYSIS内容分析",
+        comment=(
+            "任务投递通道：MEDIA普通媒体、CONTENT_ANALYSIS内容分析、"
+            "IMAGE_ANALYSIS图像分析"
+        ),
     )
     routing_key = Column(
         "lyj",

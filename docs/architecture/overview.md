@@ -64,11 +64,20 @@ MediaFleet 将“接收请求和协调状态”与“执行媒体计算和访问
 模型调用阻塞 AMQP 心跳。步骤进度和阶段性结果持续写入 MySQL，控制中心查询接口直接读取
 这些持久记录；任务已经进入终态但回调未成功时，重复消息只补偿回调，不重新执行评课步骤。
 
-### 2.5 基础设施
+### 2.5 图像分析服务 `image-analysis`
+
+图像分析使用 `image.analysis.task` Exchange 和 `image-analysis.tasks` 共享持久队列，负责
+录像来源探测、课堂时间轴采样、FFmpeg 抽帧、图片上传和多图视觉模型推理。任务租约、来源
+选择、帧检查点、采样点结果和通知状态都写入 MySQL；结果通过独立 Exchange 可靠发布。
+
+控制中心只负责接单、锁定 Prompt 和投递，不读取视频、不运行 FFmpeg，也不加载视觉模型。
+详细设计见[课堂图像分析架构](image-analysis.md)。
+
+### 2.6 基础设施
 
 | 组件 | 作用 | 是否保存权威事实 |
 | --- | --- | --- |
-| MySQL | 节点、绑定、任务、投递状态、执行租约、产物、内容分析状态 | 是 |
+| MySQL | 节点、绑定、任务、投递状态、执行租约、产物、内容和图像分析状态 | 是 |
 | RabbitMQ | 任务、命令和事件的可靠传输、重试与死信 | 否 |
 | 对象存储 | 最终媒体产物 | 产物内容是，元数据仍需写入 MySQL |
 | ZLMediaKit | 流媒体接入与录像 | 本地录像由对应录制节点负责 |
@@ -103,6 +112,7 @@ flowchart TB
         W1[media-worker A]
         W2[media-worker B]
         A1[content-analysis A]
+        I1[image-analysis A]
     end
 
     Client --> C1
@@ -117,6 +127,7 @@ flowchart TB
     MQ --> W1
     MQ --> W2
     MQ --> A1
+    MQ --> I1
     R1 <--> Z1
     Z1 --> D1
     R1 --> D1
@@ -124,10 +135,12 @@ flowchart TB
     W1 --> Store
     W2 --> Store
     A1 --> Store
+    I1 --> Store
     R1 <--> DB
     W1 <--> DB
     W2 <--> DB
     A1 <--> DB
+    I1 <--> DB
 ```
 
 ## 4. 关键业务链路

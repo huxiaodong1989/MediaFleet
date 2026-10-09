@@ -18,13 +18,14 @@
 - [服务边界与依赖规则](architecture/service-boundaries.md)
 - [数据一致性与消息可靠性](architecture/data-and-messaging.md)
 - [REST、SDK、CLI 与 MCP 接口架构](architecture/interfaces.md)
+- [课堂图像分析架构](architecture/image-analysis.md)
 - [架构决策记录](decisions/README.md)
 
 ## 开发与运维
 
 - [扩展开发指南](development/extending-mediafleet.md)
 - [Docker Compose 部署](deployment/docker-compose.md)
-- [GitHub Private 仓库上线清单](deployment/github-private.md)
+- [GitHub 仓库与分支保护清单](deployment/github.md)
 - [配置与密钥管理](security/configuration-and-secrets.md)
 - [依赖许可证审查](security/dependency-licenses.md)
 

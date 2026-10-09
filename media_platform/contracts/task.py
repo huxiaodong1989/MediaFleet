@@ -13,6 +13,7 @@ class TaskDeliveryChannel(str, Enum):
 
     MEDIA = "MEDIA"
     CONTENT_ANALYSIS = "CONTENT_ANALYSIS"
+    IMAGE_ANALYSIS = "IMAGE_ANALYSIS"
 
 
 class TaskDispatchMessage(MessageEnvelope):

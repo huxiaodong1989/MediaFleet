@@ -12,6 +12,7 @@
 | `docker-compose.media-worker.yml` | 只部署 CPU 媒体 Worker，可多服务器、多实例部署 |
 | `docker-compose.gpu.yml` | GPU 服务器上的独立 media-worker，适合 FunASR/GLM-ASR |
 | `docker-compose.content-analysis.yml` | 只部署 AI 评课/内容分析服务，消费独立内容分析队列 |
+| `docker-compose.image-analysis.yml` | 只部署课堂图像分析服务，默认不消费任务 |
 | `.env.example` | Portainer Stack 级变量：镜像、端口、宿主机目录和常用依赖地址 |
 
 ## 部署步骤
@@ -40,6 +41,8 @@ docker network create --driver bridge mediafleet-network
 `ZLM_SERVER_ID` 和 `ZLM_RECORD_PATH`；CPU/GPU Worker 则共享相同的
 `MEDIA_WORKER_QUEUE_NAME`；内容分析服务使用 `docker-compose.content-analysis.yml`，按实例修改
 `CONTENT_ANALYSIS_INSTANCE_ID` 和 `CONTENT_ANALYSIS_NODE_NAME`。
+图像分析服务使用 `docker-compose.image-analysis.yml`，每个实例设置唯一的
+`IMAGE_ANALYSIS_INSTANCE_ID`，并在端到端验收后才开启接单和消费者。
 
 ## 外部依赖
 
@@ -49,6 +52,8 @@ docker network create --driver bridge mediafleet-network
 - RabbitMQ 的 media-worker 实例使用相同的 `MEDIA_WORKER_QUEUE_NAME` 竞争消费；
 - content-analysis 使用独立 `content.analysis.task` Exchange 和 `content-analysis.tasks`
   队列，多个内容分析实例通过同一队列竞争消费；
+- image-analysis 使用独立 `image.analysis.task` Exchange 和 `image-analysis.tasks` 队列，
+  结果通过 `image.analysis.result` Exchange 发布；
 - recorder-node 的 `ZLM_API_URL` 指向配套 ZLMediaKit 的管理 API；
 - `ZLM_RECORD_PATH` 只表示宿主机上该 ZL 实际 `www/record` 目录；recorder-node 容器内统一挂载为
   `/data/zlmediakit/record`，所以 `ZLM_RECORD_LOCAL_ROOT` 必须填写
@@ -76,7 +81,9 @@ Compose 中首次部署可以将 `DB_AUTO_MIGRATE=true`。多实例调用中心�
 docker compose --env-file .env.example -f docker-compose.yml config --quiet
 docker compose --env-file .env.example -f docker-compose.gpu.yml config --quiet
 docker compose --env-file .env.example -f docker-compose.content-analysis.yml config --quiet
+docker compose --env-file .env.example -f docker-compose.image-analysis.yml config --quiet
 ```
 
 部署后在 Portainer 的 Stack Logs 中分别查看 `control-center`、`recorder-node`、`media-worker`
-和 `content-analysis` 日志；健康检查地址分别是 `/health` 的 8008、8010、8009 和 8012 端口。
+、`content-analysis` 和 `image-analysis` 日志；健康检查地址分别是 `/health` 的 8008、
+8010、8009、8012 和 8013 端口。

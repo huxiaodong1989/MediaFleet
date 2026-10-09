@@ -15,10 +15,12 @@ class Publisher:
 def test_channel_publisher_routes_content_tasks_away_from_media_exchange():
     media = Publisher()
     content = Publisher()
+    image = Publisher()
     publisher = ChannelTaskPublisher(
         {
             TaskDeliveryChannel.MEDIA: media,
             TaskDeliveryChannel.CONTENT_ANALYSIS: content,
+            TaskDeliveryChannel.IMAGE_ANALYSIS: image,
         }
     )
     message = TaskDispatchMessage(
@@ -35,3 +37,15 @@ def test_channel_publisher_routes_content_tasks_away_from_media_exchange():
     assert receipt.message_id == "message-1"
     assert media.messages == []
     assert content.messages == [message]
+    assert image.messages == []
+
+    image_message = message.model_copy(
+        update={
+            "task_type": "image.three_rates.analyze",
+            "routing_key": "image.three_rates.analyze",
+            "delivery_channel": TaskDeliveryChannel.IMAGE_ANALYSIS,
+        }
+    )
+    assert publisher.publish(image_message).message_id == "message-1"
+    assert image.messages == [image_message]
+    assert media.messages == []

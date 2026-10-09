@@ -1,0 +1,39 @@
+name: mediafleet-image-analysis
+
+services:
+  image-analysis:
+    image: ${IMAGE_ANALYSIS_IMAGE:-mediafleet-image-analysis:stable}
+    container_name: mediafleet-image-analysis
+    env_file:
+      - path: ${IMAGE_ANALYSIS_ENV_FILE:-../../.env}
+        required: false
+    environment:
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: "8013"
+      SERVICE_DOTENV_ENABLED: "false"
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-host.docker.internal}
+      MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL: ${CONTROL_CENTER_INTERNAL_URL:-http://host.docker.internal:8008}
+      IMAGE_ANALYSIS_CONSUMER_ENABLED: ${IMAGE_ANALYSIS_CONSUMER_ENABLED:-false}
+      TZ: ${TZ:-Asia/Shanghai}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${IMAGE_ANALYSIS_HOST_IP:-127.0.0.1}:${IMAGE_ANALYSIS_PORT:-8013}:8013"
+    volumes:
+      - ${HOST_LOG_PATH:-/opt/mediafleet/logs}/image-analysis:/app/logs
+      - ${HOST_TEMP_PATH:-/opt/mediafleet/temp}/image-analysis:/tmp/image-analysis
+    restart: unless-stopped
+    networks:
+      - media-platform-network
+    healthcheck:
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8013/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  media-platform-network:
+    driver: bridge

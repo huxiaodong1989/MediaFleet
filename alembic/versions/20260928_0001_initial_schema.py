@@ -264,25 +264,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index('idx_mt_wj_rw', table_name='media_artifact')
-    op.drop_index('idx_mt_wj_lx', table_name='media_artifact')
+    # MySQL 可能复用显式索引作为外键支撑索引。先单独删除这类索引会触发
+    # ERROR 1553；删除表本身会原子清理其外键和全部索引。
     op.drop_table('media_artifact')
-    op.drop_index('idx_ai_pkbz_zt', table_name='content_evaluation_step')
     op.drop_table('content_evaluation_step')
-    op.drop_index('idx_ai_pkjl_zt', table_name='content_evaluation')
     op.drop_table('content_evaluation')
-    op.drop_index('idx_mt_rw_zxjd', table_name='media_task')
-    op.drop_index('idx_mt_rw_td', table_name='media_task')
-    op.drop_index('idx_mt_rw_lzyy', table_name='media_task')
-    op.drop_index('idx_mt_rw_lzll', table_name='media_task')
-    op.drop_index('idx_mt_rw_fb', table_name='media_task')
-    op.drop_index('idx_mt_rw_dd', table_name='media_task')
     op.drop_table('media_task')
-    op.drop_index('idx_mt_fwq_zt', table_name='recording_server')
     op.drop_table('recording_server')
-    op.drop_index('idx_mt_lb_jd', table_name='media_stream_binding')
     op.drop_table('media_stream_binding')
-    op.drop_index('idx_ai_tsbb_qy', table_name='prompt_version')
     op.drop_table('prompt_version')
-    op.drop_index('idx_mt_jd_zt_xt', table_name='media_node')
     op.drop_table('media_node')

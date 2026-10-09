@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from media_platform.contracts.topology import (
     CONTENT_ANALYSIS_TASK_QUEUE,
+    IMAGE_ANALYSIS_TASK_QUEUE,
     recorder_command_queue_name,
 )
 from media_platform.domain.task import PublishStatus, TaskStatus
@@ -271,9 +272,7 @@ class AdminService:
             if filters:
                 query = query.where(*filters)
             rows = list(
-                session.scalars(
-                    query.offset((page - 1) * page_size).limit(page_size)
-                )
+                session.scalars(query.offset((page - 1) * page_size).limit(page_size))
             )
             return AdminTaskPage(
                 items=tuple(self._task_summary(row) for row in rows),
@@ -287,9 +286,7 @@ class AdminService:
         if page < 1 or page_size < 1 or page_size > 200:
             raise ValueError("page/page_size 参数无效")
 
-    def list_nodes_page(
-        self, *, page: int = 1, page_size: int = 20
-    ) -> AdminNodePage:
+    def list_nodes_page(self, *, page: int = 1, page_size: int = 20) -> AdminNodePage:
         """分页读取节点快照，避免管理页面一次性加载全部节点。"""
 
         self._validate_page(page, page_size)
@@ -306,23 +303,33 @@ class AdminService:
             )
             task_counts = dict(
                 session.execute(
-                    select(MediaTaskModel.executor_node_id, func.count(MediaTaskModel.id))
+                    select(
+                        MediaTaskModel.executor_node_id, func.count(MediaTaskModel.id)
+                    )
                     .where(
                         MediaTaskModel.executor_node_id.is_not(None),
                         func.lower(MediaTaskModel.status).in_(
-                            (TaskStatus.PROCESSING.value, TaskStatus.POST_PROCESSING.value)
+                            (
+                                TaskStatus.PROCESSING.value,
+                                TaskStatus.POST_PROCESSING.value,
+                            )
                         ),
                     )
                     .group_by(MediaTaskModel.executor_node_id)
                 ).all()
             )
-            total = int(session.scalar(select(func.count()).select_from(MediaNodeModel)) or 0)
+            total = int(
+                session.scalar(select(func.count()).select_from(MediaNodeModel)) or 0
+            )
             rows = list(
                 session.scalars(
-                    select(MediaNodeModel).order_by(
+                    select(MediaNodeModel)
+                    .order_by(
                         MediaNodeModel.node_type.asc(),
                         MediaNodeModel.node_code.asc(),
-                    ).offset((page - 1) * page_size).limit(page_size)
+                    )
+                    .offset((page - 1) * page_size)
+                    .limit(page_size)
                 )
             )
             servers = {
@@ -345,8 +352,12 @@ class AdminService:
                     last_heartbeat_at=row.last_heartbeat_at,
                     active_bindings=int(binding_counts.get(row.id, 0)),
                     active_tasks=int(task_counts.get(row.id, 0)),
-                    recording_server_code=(servers.get(row.id).server_code if row.id in servers else None),
-                    recording_server_status=(servers.get(row.id).status if row.id in servers else None),
+                    recording_server_code=(
+                        servers.get(row.id).server_code if row.id in servers else None
+                    ),
+                    recording_server_status=(
+                        servers.get(row.id).status if row.id in servers else None
+                    ),
                 )
                 for row in rows
             )
@@ -396,10 +407,14 @@ class AdminService:
             )
             if filters:
                 query = query.where(*filters)
-            query = query.order_by(
-                MediaStreamBindingModel.updated_at.desc(),
-                MediaStreamBindingModel.id.desc(),
-            ).offset((page - 1) * page_size).limit(page_size)
+            query = (
+                query.order_by(
+                    MediaStreamBindingModel.updated_at.desc(),
+                    MediaStreamBindingModel.id.desc(),
+                )
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
             items = tuple(
                 AdminBindingSummary(
                     binding_id=binding.id,
@@ -449,32 +464,36 @@ class AdminService:
             task_counts = {
                 str(status): int(count)
                 for status, count in session.execute(
-                    select(MediaTaskModel.status, func.count(MediaTaskModel.id)).group_by(
-                        MediaTaskModel.status
-                    )
+                    select(
+                        MediaTaskModel.status, func.count(MediaTaskModel.id)
+                    ).group_by(MediaTaskModel.status)
                 ).all()
             }
             type_counts = {
                 str(task_type): int(count)
                 for task_type, count in session.execute(
-                    select(MediaTaskModel.task_type, func.count(MediaTaskModel.id)).group_by(
-                        MediaTaskModel.task_type
-                    )
+                    select(
+                        MediaTaskModel.task_type, func.count(MediaTaskModel.id)
+                    ).group_by(MediaTaskModel.task_type)
                 ).all()
             }
             node_counts = {
                 str(status): int(count)
                 for status, count in session.execute(
-                    select(MediaNodeModel.status, func.count(MediaNodeModel.id)).group_by(
-                        MediaNodeModel.status
-                    )
+                    select(
+                        MediaNodeModel.status, func.count(MediaNodeModel.id)
+                    ).group_by(MediaNodeModel.status)
                 ).all()
             }
             node_codes = list(session.scalars(select(MediaNodeModel.node_code)))
         queues = ()
         if self.queue_inspector is not None:
             queues = self.queue_inspector.inspect(
-                [MEDIA_WORKER_QUEUE, CONTENT_ANALYSIS_TASK_QUEUE]
+                [
+                    MEDIA_WORKER_QUEUE,
+                    CONTENT_ANALYSIS_TASK_QUEUE,
+                    IMAGE_ANALYSIS_TASK_QUEUE,
+                ]
                 + [recorder_command_queue_name(code) for code in node_codes]
             )
         return {
@@ -523,7 +542,9 @@ class AdminService:
         except LookupError:
             raise
         except Exception as exc:
-            raise AdminOperationError(str(exc) or f"{type(exc).__name__}: {exc!r}") from exc
+            raise AdminOperationError(
+                str(exc) or f"{type(exc).__name__}: {exc!r}"
+            ) from exc
         with self.session_factory() as session:
             task = session.get(MediaTaskModel, task_id)
             if task is None:

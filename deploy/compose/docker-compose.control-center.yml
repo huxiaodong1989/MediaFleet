@@ -14,6 +14,8 @@ services:
       DB_HOST: ${DB_HOST:-host.docker.internal}
       RABBITMQ_HOST: ${RABBITMQ_HOST:-host.docker.internal}
       REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      IMAGE_ANALYSIS_INTAKE_ENABLED: ${IMAGE_ANALYSIS_INTAKE_ENABLED:-false}
+      IMAGE_ANALYSIS_ALLOWED_MODELS: ${IMAGE_ANALYSIS_ALLOWED_MODELS:-}
       TZ: ${TZ:-Asia/Shanghai}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
     ports:

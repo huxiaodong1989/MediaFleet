@@ -24,9 +24,17 @@ from media_platform.application import (
     TaskQueryService,
 )
 from media_platform.application.content_prompt_service import PromptManagementService
+from media_platform.application.image_prompt_service import (
+    ImagePromptManagementService,
+    ImagePromptPolicy,
+)
+from services.control_center.application.image_analysis_intake_service import (
+    ImageAnalysisIntakeService,
+)
 from media_platform.contracts.task import TaskDeliveryChannel
 from media_platform.contracts.topology import (
     CONTENT_ANALYSIS_TASK_EXCHANGE,
+    IMAGE_ANALYSIS_TASK_EXCHANGE,
     CONTROL_CENTER_EVENT_QUEUE,
     MEDIA_TASK_EXCHANGE,
 )
@@ -82,6 +90,9 @@ class ControlCenterRuntime:
     command_publisher: PikaRecorderCommandPublisher
     api_key: str
     content_prompt_service: PromptManagementService | None = None
+    image_prompt_service: ImagePromptManagementService | None = None
+    image_intake_service: ImageAnalysisIntakeService | None = None
+    image_intake_enabled: bool = False
     content_evaluation_query_service: ContentEvaluationQueryService | None = None
     admin_service: AdminService | None = None
     event_consumer: PikaMediaEventConsumer | None = None
@@ -133,10 +144,7 @@ class ControlCenterRuntime:
     def _start_node_health_loop(self) -> None:
         """启动节点心跳超时巡检。"""
 
-        if (
-            self._node_health_task is not None
-            and not self._node_health_task.done()
-        ):
+        if self._node_health_task is not None and not self._node_health_task.done():
             return
         self._node_health_task = asyncio.create_task(
             self._node_health_loop(),
@@ -275,10 +283,23 @@ def build_control_center_runtime() -> ControlCenterRuntime:
             blocked_connection_timeout=rabbitmq.blocked_connection_timeout,
         )
     )
+    image_task_publisher = PikaTaskPublisher(
+        RabbitMQPublisherConfig(
+            host=rabbitmq.host,
+            exchange=IMAGE_ANALYSIS_TASK_EXCHANGE,
+            port=rabbitmq.port,
+            username=rabbitmq.username,
+            password=rabbitmq.password,
+            virtual_host=rabbitmq.vhost,
+            heartbeat=rabbitmq.heartbeat,
+            blocked_connection_timeout=rabbitmq.blocked_connection_timeout,
+        )
+    )
     publisher = ChannelTaskPublisher(
         {
             TaskDeliveryChannel.MEDIA: media_task_publisher,
             TaskDeliveryChannel.CONTENT_ANALYSIS: content_task_publisher,
+            TaskDeliveryChannel.IMAGE_ANALYSIS: image_task_publisher,
         }
     )
     command_publisher = PikaRecorderCommandPublisher(
@@ -376,6 +397,28 @@ def build_control_center_runtime() -> ControlCenterRuntime:
         callback_handler=event_handler,
     )
     content_prompt_service = PromptManagementService(SessionLocal)
+    image_models = frozenset(
+        item.strip()
+        for item in os.getenv("IMAGE_ANALYSIS_ALLOWED_MODELS", "").split(",")
+        if item.strip()
+    )
+    image_prompt_service = (
+        ImagePromptManagementService(
+            SessionLocal,
+            ImagePromptPolicy(
+                allowed_models=image_models,
+                output_schema_versions=frozenset({"image-metrics.v1"}),
+                metric_definition_versions=frozenset({"classroom-behavior.v1"}),
+            ),
+        )
+        if image_models
+        else None
+    )
+    image_intake_service = (
+        ImageAnalysisIntakeService(task_service, image_prompt_service.policy)
+        if image_prompt_service is not None
+        else None
+    )
     event_routing_keys = tuple(
         item.strip()
         for item in os.getenv(
@@ -429,6 +472,9 @@ def build_control_center_runtime() -> ControlCenterRuntime:
         api_key=settings.API_KEY,
         admin_service=admin_service,
         content_prompt_service=content_prompt_service,
+        image_prompt_service=image_prompt_service,
+        image_intake_service=image_intake_service,
+        image_intake_enabled=_environment_bool("IMAGE_ANALYSIS_INTAKE_ENABLED", False),
         content_evaluation_query_service=content_evaluation_query_service,
         event_consumer=event_consumer,
         event_consumer_enabled=_environment_bool(

@@ -53,6 +53,8 @@ services:
       RECORDING_COMMAND_DISPATCH_POLL_INTERVAL_SECONDS: ${RECORDING_COMMAND_DISPATCH_POLL_INTERVAL_SECONDS:-1}
       RECORDING_RESERVATION_MARGIN_SECONDS: ${RECORDING_RESERVATION_MARGIN_SECONDS:-5}
       CONTROL_CENTER_EVENT_CONSUMER_ENABLED: "false"
+      IMAGE_ANALYSIS_INTAKE_ENABLED: ${IMAGE_ANALYSIS_INTAKE_ENABLED:-false}
+      IMAGE_ANALYSIS_ALLOWED_MODELS: ${IMAGE_ANALYSIS_ALLOWED_MODELS:-}
     ports:
       - "${CONTROL_CENTER_HOST_IP:-127.0.0.1}:${CONTROL_CENTER_PORT:-8008}:8008"
     volumes:
@@ -119,6 +121,58 @@ services:
       <<: *healthcheck
       test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8009/health', timeout=5)"]
       start_period: 300s
+
+  image-analysis:
+    image: ${IMAGE_ANALYSIS_IMAGE:-mediafleet-image-analysis:stable}
+    container_name: mediafleet-image-analysis
+    environment:
+      <<: *common
+      SERVICE_PORT: "8013"
+      SERVICE_LOG_LEVEL: ${IMAGE_ANALYSIS_LOG_LEVEL:-INFO}
+      SERVICE_LOG_DIR: /app/logs
+      API_KEY: ${IMAGE_ANALYSIS_API_KEY:-change-me}
+      IMAGE_ANALYSIS_INSTANCE_ID: ${IMAGE_ANALYSIS_INSTANCE_ID:-image-analysis-local-1}
+      MEDIA_NODE_NAME: ${IMAGE_ANALYSIS_NODE_NAME:-image-analysis-local-1}
+      MEDIA_NODE_HEARTBEAT_CONTROL_CENTER_URL: http://control-center:8008
+      IMAGE_ANALYSIS_CONSUMER_ENABLED: ${IMAGE_ANALYSIS_CONSUMER_ENABLED:-false}
+      IMAGE_ANALYSIS_MAX_CONCURRENT_CLASSROOMS: ${IMAGE_ANALYSIS_MAX_CONCURRENT_CLASSROOMS:-4}
+      IMAGE_ANALYSIS_FFMPEG_CONCURRENCY: ${IMAGE_ANALYSIS_FFMPEG_CONCURRENCY:-4}
+      IMAGE_ANALYSIS_DOWNLOAD_CONCURRENCY: ${IMAGE_ANALYSIS_DOWNLOAD_CONCURRENCY:-1}
+      IMAGE_ANALYSIS_UPLOAD_CONCURRENCY: ${IMAGE_ANALYSIS_UPLOAD_CONCURRENCY:-4}
+      IMAGE_ANALYSIS_MODEL_CONCURRENCY: ${IMAGE_ANALYSIS_MODEL_CONCURRENCY:-4}
+      IMAGE_ANALYSIS_FFMPEG_THREADS: ${IMAGE_ANALYSIS_FFMPEG_THREADS:-1}
+      IMAGE_ANALYSIS_DEFAULT_MODEL: ${IMAGE_ANALYSIS_DEFAULT_MODEL:-}
+      IMAGE_ANALYSIS_ALLOWED_MODELS: ${IMAGE_ANALYSIS_ALLOWED_MODELS:-}
+      IMAGE_ANALYSIS_OPENAI_API_KEY: ${IMAGE_ANALYSIS_OPENAI_API_KEY:-}
+      IMAGE_ANALYSIS_OPENAI_BASE_URL: ${IMAGE_ANALYSIS_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      IMAGE_ANALYSIS_STORAGE_PROVIDER: ${IMAGE_ANALYSIS_STORAGE_PROVIDER:-MINIO}
+      IMAGE_ANALYSIS_VIDEO_ALLOWED_HOSTS: ${IMAGE_ANALYSIS_VIDEO_ALLOWED_HOSTS:-}
+      IMAGE_ANALYSIS_VIDEO_ALLOWED_NETWORKS: ${IMAGE_ANALYSIS_VIDEO_ALLOWED_NETWORKS:-}
+      IMAGE_ANALYSIS_VIDEO_ALLOWED_PORTS: ${IMAGE_ANALYSIS_VIDEO_ALLOWED_PORTS:-80,443}
+      IMAGE_ANALYSIS_RESULT_EXCHANGE: ${IMAGE_ANALYSIS_RESULT_EXCHANGE:-image.analysis.result}
+      IMAGE_ANALYSIS_RESULT_ROUTING_KEY: ${IMAGE_ANALYSIS_RESULT_ROUTING_KEY:-image.analysis.sample}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-host.docker.internal:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-change-me}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-me}
+      MINIO_BUCKET: ${MINIO_BUCKET:-media}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      COS_SECRET_ID: ${COS_SECRET_ID:-}
+      COS_SECRET_KEY: ${COS_SECRET_KEY:-}
+      COS_REGION: ${COS_REGION:-}
+      COS_BUCKET: ${COS_BUCKET:-}
+    ports:
+      - "${IMAGE_ANALYSIS_HOST_IP:-127.0.0.1}:${IMAGE_ANALYSIS_PORT:-8013}:8013"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ${HOST_LOG_PATH:-../../../.local/logs}/image-analysis:/app/logs
+      - ${HOST_TEMP_PATH:-../../../.local/temp}/image-analysis:/tmp/image-analysis
+    restart: unless-stopped
+    networks: [media-platform-network]
+    depends_on:
+      control-center: {condition: service_started}
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", ".venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8013/health', timeout=5)"]
 
   recorder-node:
     image: ${RECORDER_NODE_IMAGE:-mediafleet-recorder-node:stable}

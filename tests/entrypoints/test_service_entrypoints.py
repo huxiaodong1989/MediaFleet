@@ -28,6 +28,11 @@ SERVICE_CASES = (
         "content_analysis",
         None,
     ),
+    (
+        "services.image_analysis.main",
+        "image_analysis",
+        None,
+    ),
 )
 
 

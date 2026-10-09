@@ -14,6 +14,10 @@ from media_platform.application import (
     TaskQueryService,
 )
 from media_platform.application.content_prompt_service import PromptManagementService
+from media_platform.application.image_prompt_service import ImagePromptManagementService
+from services.control_center.application.image_analysis_intake_service import (
+    ImageAnalysisIntakeService,
+)
 from services.control_center.application.recording_task_state_service import (
     RecordingTaskStateService,
 )
@@ -170,6 +174,32 @@ def get_content_prompt_service(request: Request) -> PromptManagementService:
     return service
 
 
+def get_image_prompt_service(request: Request) -> ImagePromptManagementService:
+    service = getattr(_get_runtime(request), "image_prompt_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="图像提示词管理未配置模型名单",
+        )
+    return service
+
+
+def get_image_intake_service(request: Request) -> ImageAnalysisIntakeService:
+    runtime = _get_runtime(request)
+    if not getattr(runtime, "image_intake_enabled", False):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="图像分析接单尚未启用",
+        )
+    service = getattr(runtime, "image_intake_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="图像分析提示词或模型名单尚未配置",
+        )
+    return service
+
+
 def get_content_evaluation_query_service(
     request: Request,
 ) -> ContentEvaluationQueryService:
@@ -191,6 +221,7 @@ __all__ = [
     "get_admin_service",
     "get_content_evaluation_query_service",
     "get_content_prompt_service",
+    "get_image_intake_service",
     "get_stream_binding_service",
     "get_task_dispatch_service",
     "get_task_query_service",

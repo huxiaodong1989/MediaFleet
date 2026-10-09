@@ -13,6 +13,10 @@ CONTENT_ANALYSIS_TASK_EXCHANGE = "content.analysis.task"
 CONTENT_ANALYSIS_TASK_RETRY_EXCHANGE = "content.analysis.task.retry"
 CONTENT_ANALYSIS_TASK_DEAD_LETTER_EXCHANGE = "content.analysis.task.dlx"
 CONTENT_ANALYSIS_TASK_QUEUE = "content-analysis.tasks"
+IMAGE_ANALYSIS_TASK_EXCHANGE = "image.analysis.task"
+IMAGE_ANALYSIS_TASK_RETRY_EXCHANGE = "image.analysis.task.retry"
+IMAGE_ANALYSIS_TASK_DEAD_LETTER_EXCHANGE = "image.analysis.task.dlx"
+IMAGE_ANALYSIS_TASK_QUEUE = "image-analysis.tasks"
 MEDIA_COMMAND_EXCHANGE = "media.command"
 MEDIA_COMMAND_RETRY_EXCHANGE = "media.command.retry"
 MEDIA_COMMAND_DEAD_LETTER_EXCHANGE = "media.command.dlx"
@@ -36,9 +40,7 @@ def normalized_rabbitmq_name(value: str, *, field_name: str) -> str:
     if not normalized:
         raise ValueError(f"{field_name} 不能为空")
     if not _RABBITMQ_NAME_PATTERN.fullmatch(normalized):
-        raise ValueError(
-            f"{field_name} 只能包含字母、数字、点、下划线和短横线"
-        )
+        raise ValueError(f"{field_name} 只能包含字母、数字、点、下划线和短横线")
     return normalized
 
 

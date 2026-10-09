@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#182127" />
     <title>媒体调度中心 · 运维后台</title>
-    <link rel="stylesheet" href="/admin/styles.css?v=20260924-2" />
+    <link rel="stylesheet" href="/admin/styles.css?v=20261008-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -34,6 +34,9 @@
           </button>
           <button class="nav-item" data-view="prompts">
             <span class="nav-icon">✦</span><span>AI评课提示词</span>
+          </button>
+          <button class="nav-item" data-view="image-prompts">
+            <span class="nav-icon">◈</span><span>图像分析提示词</span>
           </button>
         </nav>
 
@@ -160,8 +163,34 @@
             </section>
           </div>
         </section>
+
+        <section id="view-image-prompts" class="view" aria-labelledby="image-prompts-heading">
+          <div class="view-heading compact-heading"><div><p class="eyebrow">CLASSROOM IMAGE ANALYSIS</p><h1 id="image-prompts-heading">图像分析提示词</h1><p class="heading-note">学生与教师行为共用一份完整提示词；模型参数随版本锁定，已发布版本需复制为草稿后修改。</p></div></div>
+          <form id="image-prompt-filters" class="filter-bar image-prompt-filter">
+            <label><span>学校码</span><input name="school_code" value="GLOBAL" /></label>
+            <button class="primary-button" type="submit">加载版本</button>
+          </form>
+          <div class="prompt-layout">
+            <section class="surface table-surface"><div class="surface-heading"><div><p class="eyebrow">VERSION HISTORY</p><h2>版本记录</h2></div><span class="surface-meta" id="image-prompt-result-count">—</span></div><div id="image-prompts-table" class="data-table-wrap empty-state">正在读取图像提示词版本…</div></section>
+            <section class="surface prompt-editor">
+              <div class="surface-heading"><div><p class="eyebrow">PROMPT EDITOR</p><h2 id="image-prompt-editor-title">选择版本查看</h2></div><span id="image-prompt-editor-mode" class="surface-meta">—</span></div>
+              <div id="image-prompt-editor-empty" class="empty-message">请从左侧选择一个版本。</div>
+              <div id="image-prompt-editor-fields" hidden>
+                <div class="prompt-step-meta image-prompt-meta">
+                  <label><span>模型</span><input id="image-prompt-model" /></label>
+                  <label><span>温度</span><input id="image-prompt-temperature" type="number" min="0" max="2" step="0.1" /></label>
+                  <label><span>最大 Token</span><input id="image-prompt-max-tokens" type="number" min="1" step="1" /></label>
+                  <label><span>输出协议版本</span><input id="image-prompt-output-schema" /></label>
+                  <label><span>指标定义版本</span><input id="image-prompt-metric-definition" /></label>
+                </div>
+                <label class="prompt-field"><span>完整提示词（18 项指标）</span><textarea id="image-prompt-text" class="prompt-textarea image-prompt-textarea" spellcheck="false"></textarea></label>
+              </div>
+              <div class="prompt-actions"><button id="image-prompt-new" class="table-action" type="button" disabled>复制当前版本为草稿</button><button id="image-prompt-save" class="table-action" type="button" disabled>保存草稿</button><button id="image-prompt-publish" class="primary-button" type="button" disabled>发布 / 回滚</button></div>
+            </section>
+          </div>
+        </section>
       </main>
     </div>
-    <script src="/admin/app.js?v=20260924-2" defer></script>
+    <script src="/admin/app.js?v=20261008-1" defer></script>
   </body>
 </html>

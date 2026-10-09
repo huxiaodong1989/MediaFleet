@@ -17,6 +17,7 @@ Windows PowerShell 可使用 `Copy-Item .env.example .env`。
 - 每个录制节点必须与一套固定 ZLMediaKit 和录像目录配对，并使用唯一稳定节点 ID。
 - 能力等价的媒体 Worker 使用同一个队列名竞争消费。
 - 内容分析使用独立队列，避免与媒体计算资源相互影响。
+- 图像分析使用独立任务队列和结果 Exchange，默认关闭接单与消费。
 - MySQL、RabbitMQ、Redis、对象存储和 ZLMediaKit 可以由外部平台提供。
 
 ## 生产部署要求
@@ -36,7 +37,8 @@ Windows PowerShell 可使用 `Copy-Item .env.example .env`。
 2. 在单独发布步骤执行 Alembic 迁移。
 3. 启动一个控制中心并检查 `/health`。
 4. 启动录制节点，确认心跳报告 ZL API、录像目录和磁盘均就绪。
-5. 启动媒体 Worker 和可选内容分析服务。
+5. 启动媒体 Worker 和可选内容分析、图像分析服务。图像分析先保持接单与消费关闭，
+   完成模型、存储、视频允许列表和结果路由验证后再依次开启。
 6. 再扩展控制中心副本或 Worker 数量。
 
 ## 校验

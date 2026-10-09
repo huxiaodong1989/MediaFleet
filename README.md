@@ -1,11 +1,11 @@
 # MediaFleet
 
 MediaFleet 是一个面向多节点部署的媒体调度、录制与处理平台。项目由可独立部署和横向
-扩展的控制中心、录制节点、通用媒体 Worker 与内容分析服务组成，并以持久状态和可靠
-消息支持跨节点任务调度与故障恢复。项目演进背景见[项目背景与演进](docs/project-background.md)。
+扩展的控制中心、录制节点、通用媒体 Worker、内容分析与图像分析服务组成，并以持久状态
+和可靠消息支持跨节点任务调度与故障恢复。项目演进背景见[项目背景与演进](docs/project-background.md)。
 
-> 当前版本：`0.1.0`，处于内部预发布阶段。核心运行链路已经具备，API、SDK、CLI、
-> MCP 和运维能力仍会继续稳定；完成公开发布检查前，仓库应保持 Private。
+> 当前版本：`0.1.0`，处于 Alpha 阶段。源码仓库已经公开，但镜像和 Release 尚未作为
+> 稳定版本发布；图像分析接单与消费默认关闭，需在部署环境验收后显式开启。
 
 ## 核心能力
 
@@ -15,6 +15,7 @@ MediaFleet 是一个面向多节点部署的媒体调度、录制与处理平台
 - 使用 RabbitMQ 实现持久消息、发布确认、手动确认、有限重试和死信队列。
 - 通过共享队列横向扩展视频、音频、离线 ASR 和对象检测任务。
 - 将内容分析作为独立能力池部署，避免与通用媒体计算相互争抢资源。
+- 将课堂图像分析作为独立服务部署，支持录像选源、统一时间点抽帧、多图视觉模型与持久检查点。
 - 提供 REST API 和轻量运维控制台，并规划统一 SDK、CLI 与 MCP 适配器。
 
 ## 系统组成
@@ -25,6 +26,7 @@ MediaFleet 是一个面向多节点部署的媒体调度、录制与处理平台
 | `recorder-node` | 8010 | 控制本机 ZLMediaKit、读取本机录像、完成录制后处理 | 每个录制单元使用稳定节点 ID 独立部署 |
 | `media-worker` | 8009 | 视频、音频、离线 ASR、对象检测等通用任务 | 多实例竞争消费同一持久队列 |
 | `content-analysis` | 8012 | 可选的内容分析与检查点式执行 | 使用独立队列和独立计算池扩展 |
+| `image-analysis` | 8013 | 可选的录像抽帧、多图视觉分析与结果通知 | 使用独立队列和独立计算池扩展 |
 
 ```mermaid
 flowchart LR
@@ -35,13 +37,16 @@ flowchart LR
     TaskMQ -->|共享队列竞争消费| Worker[media-worker 集群]
     TaskMQ -->|节点专属队列| Recorder[recorder-node]
     TaskMQ -->|独立能力队列| Analysis[content-analysis 集群]
+    TaskMQ -->|独立能力队列| ImageAnalysis[image-analysis 集群]
     Recorder <--> ZLM[ZLMediaKit]
     Recorder --> Storage[(对象存储)]
     Worker --> Storage
     Analysis --> Storage
+    ImageAnalysis --> Storage
     Recorder --> MySQL
     Worker --> MySQL
     Analysis --> MySQL
+    ImageAnalysis --> MySQL
 ```
 
 MySQL 保存节点、绑定、任务、投递状态和媒体产物等持久事实。RabbitMQ 负责可靠传输，
@@ -55,6 +60,7 @@ services/
   recorder_node/        定向录制、本机文件处理与结果恢复
   media_worker/         通用媒体任务消费者与处理器注册表
   content_analysis/     可选内容分析服务
+  image_analysis/       可选课堂图像分析服务
 media_platform/
   application/          可被 REST、CLI、MCP 等入口复用的应用服务
   contracts/            跨服务消息契约与 RabbitMQ 稳定命名
@@ -76,6 +82,7 @@ uv sync --frozen
 uv sync --frozen --extra recorder-node
 uv sync --frozen --extra media-worker
 uv sync --frozen --extra content-analysis
+uv sync --frozen --extra image-analysis
 ```
 
 只复制需要运行的服务配置，不要提交填写过真实值的 `.env`：
@@ -85,6 +92,7 @@ Copy-Item services/control_center/.env.example services/control_center/.env
 Copy-Item services/media_worker/.env.example services/media_worker/.env
 Copy-Item services/recorder_node/.env.example services/recorder_node/.env
 Copy-Item services/content_analysis/.env.example services/content_analysis/.env
+Copy-Item services/image_analysis/.env.example services/image_analysis/.env
 ```
 
 在不同终端启动服务：
@@ -94,6 +102,7 @@ uv run python -m services.control_center.main
 uv run python -m services.media_worker.main
 uv run python -m services.recorder_node.main
 uv run python -m services.content_analysis.main
+uv run python -m services.image_analysis.main
 ```
 
 控制中心接口文档位于 `http://127.0.0.1:8008/api/docs`，运维控制台位于
