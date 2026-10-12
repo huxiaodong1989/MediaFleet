@@ -20,7 +20,8 @@
 
 ## 近期：开发者接口
 
-- 发布类型化 Python SDK。
+- 已完成类型化 Python SDK 第一阶段：同步/异步客户端、只读资源、错误映射、有限重试、
+  OpenAPI 契约测试和独立轻量安装包；PyPI 发布等待版本和兼容性审核。
 - 添加支持 JSON 输出和稳定退出码的 `mediafleet` CLI。
 - 基于 SDK 添加独立部署的 MCP Server。
 - 为 CLI/MCP 变更操作定义权限范围、幂等和审计规则。

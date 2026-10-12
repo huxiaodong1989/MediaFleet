@@ -150,8 +150,12 @@ override-dependencies = [
     "editdistance>=0.6.2,<0.8.1",
 ]
 
+[tool.uv.workspace]
+members = ["packages/mediafleet-sdk"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
 markers = [
     "integration: 需要数据库或其他基础设施的集成测试",
 ]

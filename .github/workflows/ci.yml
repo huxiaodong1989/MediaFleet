@@ -21,9 +21,10 @@ jobs:
           python-version: "3.12"
       - run: uv sync --frozen
       - run: uv lock --check
-      - run: uv run ruff check media_platform services tests
-      - run: uv run python -m compileall media_platform services
+      - run: uv run ruff check media_platform services tests packages
+      - run: uv run python -m compileall media_platform services packages
       - run: uv build
+      - run: uv build --package mediafleet-sdk
       - name: Validate Docker Compose files
         shell: bash
         run: |
@@ -51,6 +52,35 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --frozen
       - run: uv run python -m pytest -q
+
+  sdk:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.20"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen --package mediafleet-sdk
+      - run: uv run --frozen --package mediafleet-sdk pytest -q packages/mediafleet-sdk/tests
+      - name: Validate lightweight SDK dependencies
+        shell: bash
+        run: |
+          uv run --frozen --package mediafleet-sdk python - <<'PY'
+          import importlib.util
+          from mediafleet_sdk import AsyncMediaFleetClient, MediaFleetClient
+
+          assert MediaFleetClient
+          assert AsyncMediaFleetClient
+          for package in ("fastapi", "sqlalchemy", "pika", "torch"):
+              assert importlib.util.find_spec(package) is None, package
+          PY
 
   media-worker-dependencies:
     runs-on: ubuntu-24.04
