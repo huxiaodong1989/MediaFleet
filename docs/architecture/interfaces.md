@@ -1,7 +1,7 @@
 # REST、SDK、CLI 与 MCP 接口架构
 
 MediaFleet 使用一套应用用例和多种入口适配器。REST 是稳定远程契约；Python SDK 封装
-REST；CLI、规划中的 MCP 和现有运维控制台通过 SDK 或相同 REST 语义调用，统一鉴权、授权、审计、
+REST；CLI、MCP 和现有运维控制台通过 SDK 或相同 REST 语义调用，统一鉴权、授权、审计、
 幂等和错误处理。
 
 ```mermaid
@@ -10,7 +10,7 @@ flowchart TB
     Console[运维控制台]
     SDK[Python SDK：只读资源已实现]
     CLI[mediafleet CLI：只读命令已实现]
-    MCP[MCP Server：规划中]
+    MCP[MCP Server：8 个只读工具已实现]
     App[应用服务]
     Ports[仓储 / 消息 / 存储端口]
 
@@ -60,13 +60,19 @@ SDK 使用 `X-API-Key` 请求头访问受保护接口，提供类型化响应、
 读取，不能通过命令值参数传入，也不会保存到配置文件。CLI 当前全部只读；变更操作等待调用方
 身份、权限范围、可信审计和幂等策略完成后再设计。
 
-## MCP 要求
+## MCP Server
 
-MCP Server 独立部署并通过 SDK 访问控制中心。工具应小而明确，默认只启用只读工具；变更
-工具需要范围化授权、稳定幂等键和审计记录。
+仓库中的 [`services/mcp_server`](../../services/mcp_server/README.md) 是独立安装包，发行名和
+命令名均为 `mediafleet-mcp`。当前使用官方 Python MCP SDK 2.x 和 stdio 传输，并通过异步
+MediaFleet SDK 提供健康、总览、任务、产物、节点、绑定和录制服务器共 8 个只读工具。
 
-MCP 不提供任意 SQL、Shell、文件系统访问、RabbitMQ 发布或环境变量修改工具。面向模型的
-返回值应精简、结构化，并明确区分业务失败、权限失败和基础设施暂时不可用。
+工具返回稳定的 `ok/data/error` 结构，列表页大小上限为 100，并区分认证、权限、不存在、
+冲突、限流、超时、基础设施暂时不可用和 SDK 响应契约错误。任务的任意参数和结果会递归
+脱敏与限长；产物不返回签名下载 URL，节点与录制服务器不返回内部管理地址或本地目录。
+
+MCP 进程只从环境读取控制中心地址、API Key、自定义 CA 和超时。当前不提供 Streamable HTTP、
+任意 SQL、Shell、文件系统访问、RabbitMQ 发布或环境变量修改工具。变更工具需要范围化授权、
+稳定幂等键和可信审计记录后再开放。
 
 ## 接口演进
 

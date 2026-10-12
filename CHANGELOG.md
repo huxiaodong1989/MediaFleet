@@ -20,6 +20,10 @@ MediaFleet 的重要变更记录在此。项目遵循
   可选媒体栈。
 - GitHub Actions 升级到 Node.js 24 运行时版本，并固定 Ubuntu 24.04 Runner，避免弃用版本和
   `ubuntu-latest` 基础环境迁移影响构建。
+- 增加独立 `mediafleet-sdk` 包，提供同步/异步只读客户端、类型化响应、错误分类和有限重试。
+- 增加独立 `mediafleet-cli` 包，提供 context、系统凭据库、人工/JSON 输出和稳定退出码。
+- 增加独立 `mediafleet-mcp` 包，通过 stdio 提供 8 个基于异步 SDK 的只读 MCP 工具，并对
+  模型上下文中的敏感字段、URL 和列表大小进行限制。
 
 ### 修复
 

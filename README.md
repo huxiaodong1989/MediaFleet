@@ -16,7 +16,7 @@ MediaFleet 是一个面向多节点部署的媒体调度、录制与处理平台
 - 通过共享队列横向扩展视频、音频、离线 ASR 和对象检测任务。
 - 将内容分析作为独立能力池部署，避免与通用媒体计算相互争抢资源。
 - 将课堂图像分析作为独立服务部署，支持录像选源、统一时间点抽帧、多图视觉模型与持久检查点。
-- 提供 REST API、轻量运维控制台、类型化 Python SDK 和只读 CLI，并规划 MCP 适配器。
+- 提供 REST API、轻量运维控制台、类型化 Python SDK、只读 CLI 和只读 MCP Server。
 
 ## 系统组成
 
@@ -61,6 +61,7 @@ services/
   media_worker/         通用媒体任务消费者与处理器注册表
   content_analysis/     可选内容分析服务
   image_analysis/       可选课堂图像分析服务
+  mcp_server/           基于异步 SDK 的只读 stdio MCP Server
 media_platform/
   application/          可被 REST、CLI、MCP 等入口复用的应用服务
   contracts/            跨服务消息契约与 RabbitMQ 稳定命名
@@ -111,11 +112,12 @@ uv run python -m services.image_analysis.main
 控制中心接口文档位于 `http://127.0.0.1:8008/api/docs`，运维控制台位于
 `http://127.0.0.1:8008/admin/`。
 
-SDK 和 CLI 作为独立工作区包安装，不会拉入控制中心、数据库、RabbitMQ 或媒体模型依赖：
+SDK、CLI 和 MCP 作为独立工作区包安装，不会拉入控制中心、数据库、RabbitMQ 或媒体模型依赖：
 
 ```bash
 uv sync --package mediafleet-sdk
 uv sync --package mediafleet-cli
+uv sync --package mediafleet-mcp
 uv run --package mediafleet-cli mediafleet --help
 ```
 
@@ -141,6 +143,7 @@ docker compose --env-file .env.example -f deploy/compose/docker-compose.yml conf
 - [REST、SDK、CLI 与 MCP 接口架构](docs/architecture/interfaces.md)
 - [Python SDK 使用说明](packages/mediafleet-sdk/README.md)
 - [MediaFleet CLI 使用说明](packages/mediafleet-cli/README.md)
+- [MediaFleet MCP Server 使用说明](services/mcp_server/README.md)
 - [SDK、CLI 与 MCP 实施方案](docs/development/sdk-cli-mcp-plan.md)
 - [架构决策记录](docs/decisions/README.md)
 - [扩展开发指南](docs/development/extending-mediafleet.md)

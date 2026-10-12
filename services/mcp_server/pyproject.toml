@@ -1,0 +1,41 @@
+[project]
+name = "mediafleet-mcp"
+version = "0.1.0"
+description = "Read-only MCP server for MediaFleet"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10,<3.13"
+authors = [
+    { name = "MediaFleet contributors" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "mcp>=2.3,<3",
+    "mediafleet-sdk==0.1.0",
+]
+
+[project.scripts]
+mediafleet-mcp = "mediafleet_mcp.server:run"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv.sources]
+mediafleet-sdk = { workspace = true }

@@ -86,6 +86,11 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
 - CLI context 配置只保存 URL 与可选 CA 文件并使用原子写入；API Key 只从环境变量或系统
   keyring 读取，不提供明文命令参数，也不会写入配置文件。
 - CI 增加 Python 3.10–3.12 CLI 测试、轻量依赖检查、SDK/CLI Wheel 成对安装和命令入口检查。
+- 新增独立 `mediafleet-mcp` 包，使用官方 Python MCP SDK 2.x 和 stdio 传输，通过异步 SDK
+  提供健康、总览、任务、产物、节点、绑定和录制服务器 8 个只读工具。
+- MCP 工具统一返回 `ok/data/error` 结构并限制分页；任务任意字段递归脱敏与限长，产物、节点
+  和录制服务器响应不向模型暴露签名 URL、内部管理地址或本地目录。
+- CI 增加 Python 3.10–3.12 MCP 测试、SDK/MCP Wheel 成对安装和服务端依赖边界检查。
 
 ## 验证
 
@@ -168,6 +173,15 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   Pika 或 Torch。
 - CLI 实施后的根仓库全量验证为 `681 passed, 3 skipped`；`uv lock --check`、Ruff、额外
   F401 检查、Compileall 和 `git diff --check` 通过。
+- MCP 单元、工具契约和 stdio 协议测试 `23 passed`，覆盖 8 个工具、只读注解、分页上限、
+  筛选透传、结构化错误、敏感字段裁剪，以及通过真实 stdio 子进程和临时 HTTP 控制中心完成
+  的异步 SDK 调用与认证头验证；Python 3.10、3.11、3.12 均通过。
+- MCP sdist 与 Wheel 构建成功；在干净 Python 3.12 环境中成对安装 SDK/MCP Wheel 后可发现
+  8 个工具，且环境不包含 FastAPI、SQLAlchemy、Pika、Torch 或 keyring。
+- CLI 与 MCP 独立依赖环境执行 `pip-audit` 均未发现已知漏洞；本地未发布的三个 MediaFleet
+  包按工具预期跳过公共索引查询。
+- MCP 实施后的根仓库全量验证为 `681 passed, 3 skipped`；`uv lock --check`、Ruff、额外
+  F401 检查、Compileall 和 `git diff --check` 通过。
 
 ## 剩余风险
 
@@ -200,12 +214,15 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   权限范围；因此本阶段保持只读，尚未发布 PyPI，也未承诺稳定公共 API。
 - CLI 尚未连接部门真实控制中心验证证书、keyring 后端和人工表格显示；SDK 与 CLI 均未发布
   PyPI，因此当前安装验证需要同时提供两个同版本本地 Wheel。
+- MCP 尚未接入部门真实 MCP 客户端和控制中心验证长时间 stdio 会话、自定义 CA 与模型调用
+  体验；官方 MCP SDK 包同时包含未启用的 HTTP 传输依赖，发布前仍需持续进行依赖审计。
 
 ## 下一步
 
 在部门测试环境备份 MySQL 后执行 `20261016_0004` 迁移，单实例导入两类分析服务原部署
 配置，再验证配置发布/回滚、真实任务锁版、RabbitMQ ACK 超时与回调兼容。图像接单继续
 保持关闭，直到录像、对象存储、视觉模型、终态通知和签名地址补发通过联调。
-审核 CLI 的命令层级、配置位置、JSON 格式和退出码，再创建独立 CLI PR；CLI 审核通过前不开始
-MCP 实现。SDK 与 CLI 在进入 PyPI 发布流程
-前继续保持 `0.1.0` Alpha，并补版本发布、兼容性和弃用策略。
+在部门测试控制中心完成 SDK、CLI 和 MCP 的真实证书、凭据库、stdio 客户端和只读查询验收，
+然后统一整理三个开发分支的合并顺序。进入任何写操作前，先单独实现调用方身份、权限范围、
+可信审计和幂等策略；三个包在进入 PyPI 发布流程前继续保持 `0.1.0` Alpha，并补版本发布、
+兼容性和弃用策略。

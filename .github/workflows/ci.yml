@@ -26,6 +26,7 @@ jobs:
       - run: uv build
       - run: uv build --package mediafleet-sdk
       - run: uv build --package mediafleet-cli
+      - run: uv build --package mediafleet-mcp
       - name: Validate Docker Compose files
         shell: bash
         run: |
@@ -126,6 +127,55 @@ jobs:
           for package in ("fastapi", "sqlalchemy", "pika", "torch"):
               assert importlib.util.find_spec(package) is None, package
           PY
+      - name: Audit CLI dependencies
+        if: matrix.python-version == '3.12'
+        run: uv run --frozen --package mediafleet-cli --with pip-audit pip-audit --progress-spinner off
+
+  mcp:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.20"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen --package mediafleet-mcp
+      - run: uv run --frozen --package mediafleet-mcp pytest -q services/mcp_server/tests
+      - name: Validate installed MCP wheels
+        if: matrix.python-version == '3.12'
+        shell: bash
+        run: |
+          artifact_dir="$RUNNER_TEMP/mediafleet-mcp-wheels"
+          venv_dir="$RUNNER_TEMP/mediafleet-mcp-wheel-venv"
+          mkdir -p "$artifact_dir"
+          uv build --package mediafleet-sdk --out-dir "$artifact_dir"
+          uv build --package mediafleet-mcp --out-dir "$artifact_dir"
+          uv venv "$venv_dir" --python "${{ matrix.python-version }}"
+          uv pip install --python "$venv_dir/bin/python" \
+            "$artifact_dir"/mediafleet_sdk-*.whl \
+            "$artifact_dir"/mediafleet_mcp-*.whl
+          "$venv_dir/bin/python" -c \
+            "from mediafleet_mcp.server import server; assert server.name == 'mediafleet'"
+      - name: Validate MCP dependency boundary
+        shell: bash
+        run: |
+          uv run --frozen --package mediafleet-mcp python - <<'PY'
+          import importlib.util
+          from mediafleet_mcp.server import server
+
+          assert server.name == "mediafleet"
+          for package in ("fastapi", "sqlalchemy", "pika", "torch", "keyring"):
+              assert importlib.util.find_spec(package) is None, package
+          PY
+      - name: Audit MCP dependencies
+        if: matrix.python-version == '3.12'
+        run: uv run --frozen --package mediafleet-mcp --with pip-audit pip-audit --progress-spinner off
 
   media-worker-dependencies:
     runs-on: ubuntu-24.04

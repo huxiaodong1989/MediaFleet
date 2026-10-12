@@ -1,6 +1,6 @@
 # 依赖许可证审查
 
-审查日期：2026-09-28
+审查日期：2026-10-12
 
 MediaFleet 源代码采用 MIT License。Python 包、外部运行时和下载的模型保留各自许可证。
 
@@ -11,6 +11,9 @@ MIT、BSD、Apache-2.0、MPL-2.0 或 Python Software Foundation 许可证。
 
 基础环境中需要注意的互惠许可证依赖是 `pycountry`，其报告为 LGPL。分发者应保留通知并
 遵守对应库的再分发条款。准确解析版本记录在 `uv.lock`。
+
+独立 `mediafleet-mcp` 包使用的官方 Python MCP SDK 2.x 采用 MIT License；其解析版本和
+间接依赖同样记录在 `uv.lock`，发布 Wheel 前应重复执行许可证清单与漏洞审计。
 
 ## 可选与外部组件
 
