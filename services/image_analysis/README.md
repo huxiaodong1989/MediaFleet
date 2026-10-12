@@ -8,7 +8,7 @@
 
 ## 运行边界
 
-- MySQL 保存任务租约、视频筛选、采样点、图片、模型结果和通知状态。
+- MySQL 保存任务租约、视频筛选、采样点、图片、模型结果、采样通知和任务终态通知状态。
 - RabbitMQ 使用独立的 `image.analysis.task` 任务拓扑，消费者手动 ACK，并提供有限重试和 DLQ。
 - 结果通过可配置的 `image.analysis.result` Direct Exchange 发布，使用 Publisher Confirm。
 - FFmpeg、视频下载、对象存储和视觉模型都在本服务内运行；控制中心不执行这些工作。
@@ -28,6 +28,19 @@
 
 Bootstrap Prompt 只在 `GLOBAL` 方案完全没有历史版本时写入数据库。已有版本不会被本地文件
 覆盖；图像服务也不提供修改接口，版本管理统一走控制中心管理 API。
+
+## 结果事件
+
+采样结果和任务终态使用同一个结果 Exchange 与 Routing Key，下游通过消息体 `eventType`
+和 AMQP `type` 区分：
+
+| 事件 | `eventType` | AMQP `type` | 关键字段 |
+| --- | --- | --- | --- |
+| 采样结果 | `SAMPLE_RESULT` | `image.analysis.sample` | `internalTaskId`、`sampleId`、`sampleIndex`、`sampleTotal`、`classroomOffsetMs`、`capturedAt` |
+| 任务终态 | `TASK_TERMINATED` | `image.analysis.task.terminated` | `status`、`sampleTotal`、`successCount`、`failedCount`、`unavailableCount`、`resultPublishedCount`、`resultPublishFailedCount`、`finishedAt` |
+
+每个任务只生成一个持久终态通知。服务先处理全部采样通知，只有这些通知都已发布或耗尽有限
+重试进入失败状态后，才发布任务终态事件。重复扫描和进程重启不会生成新的事件编号。
 
 ## 本地启动
 

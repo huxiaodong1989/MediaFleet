@@ -16,6 +16,7 @@ from media_platform.contracts.image_analysis import (
     ImageAnalysisRequest,
 )
 from media_platform.contracts.task import TaskDeliveryChannel, TaskDispatchMessage
+from media_platform.domain.task import TaskStatus
 from media_platform.infrastructure.database.repositories import MediaTaskRepository
 from media_platform.infrastructure.messaging import (
     TaskBusyError,
@@ -25,6 +26,7 @@ from media_platform.infrastructure.messaging import (
 from services.image_analysis.application.classroom_pipeline import (
     ClassroomImagePipeline,
 )
+from services.image_analysis.infrastructure.repositories import ImageAnalysisRepository
 from services.image_analysis.planning import SamplingLimits, plan_classroom_samples
 from services.image_analysis.source_selection import (
     SourceProbeEvidence,
@@ -79,8 +81,20 @@ class ImageTaskHandler:
                 or task.school_code != message.school_code
             ):
                 raise TaskPermanentError("图像任务与数据库消息不一致")
-            if task.status in {"completed", "failed", "cancelled"}:
+            task_status = (
+                task.status.value
+                if isinstance(task.status, TaskStatus)
+                else str(task.status).lower()
+            )
+            if task_status in {"completed", "failed", "cancelled"}:
                 return None
+            if (
+                task_status == TaskStatus.PENDING.value
+                and task.retry_count > message.attempt
+            ):
+                # MySQL 已写入下一重试代次，但连接中断可能让 Broker 重投旧消息。
+                # 以持久事实为准，让消费者逐代提升 attempt 后重新领取。
+                raise TaskRetryableError("图像任务消息代次落后于MySQL事实")
             generation = repo.claim_execution_with_lease(
                 message.task_id,
                 message.message_id,
@@ -269,6 +283,11 @@ class ImageTaskHandler:
                     },
                     execution_generation=generation,
                 )
+                if updated:
+                    ImageAnalysisRepository(session).ensure_task_terminal_notification(
+                        task_id=message.task_id,
+                        school_code=message.school_code,
+                    )
             if not updated:
                 raise TaskBusyError("图像任务最终写回失去执行权")
             LOGGER.info(
@@ -296,13 +315,20 @@ class ImageTaskHandler:
                         execution_generation=generation,
                     )
                 else:
-                    repo.mark_execution_failed(
+                    failed = repo.mark_execution_failed(
                         message.task_id,
                         message.message_id,
                         self.worker_id,
                         type(error).__name__,
                         execution_generation=generation,
                     )
+                    if failed:
+                        ImageAnalysisRepository(
+                            session
+                        ).ensure_task_terminal_notification(
+                            task_id=message.task_id,
+                            school_code=message.school_code,
+                        )
             LOGGER.warning(
                 "图像课堂任务失败: task_id=%s, attempt=%s, next_attempt=%s, error_type=%s, duration_ms=%s",
                 message.task_id,

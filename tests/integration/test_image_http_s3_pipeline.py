@@ -17,6 +17,7 @@ from media_platform.contracts.task import TaskDeliveryChannel, TaskDispatchMessa
 from media_platform.infrastructure.database.models import (
     ImageFrameModel,
     ImageSampleModel,
+    ImageTaskNotificationModel,
     ImageVideoModel,
     MediaNodeModel,
     MediaTaskModel,
@@ -84,6 +85,7 @@ def test_real_http_video_to_local_s3_and_sample_events(tmp_path):
             MediaTaskModel.__table__,
             ImageVideoModel.__table__,
             ImageSampleModel.__table__,
+            ImageTaskNotificationModel.__table__,
             ImageFrameModel.__table__,
         ],
     )
@@ -202,9 +204,22 @@ def test_real_http_video_to_local_s3_and_sample_events(tmp_path):
     delivery = ImageNotificationDelivery(
         factory, publisher, instance_id="local-publisher"
     )
-    assert delivery.deliver_batch(limit=sample_count).published == sample_count
-    assert len(publisher.events) == sample_count
-    assert all(len(payload["data"]) == 20 for _, payload in publisher.events)
+    assert delivery.deliver_batch(limit=sample_count).published == sample_count + 1
+    assert len(publisher.events) == sample_count + 1
+    sample_events = [
+        payload
+        for _, payload in publisher.events
+        if payload["eventType"] == "SAMPLE_RESULT"
+    ]
+    terminal_events = [
+        payload
+        for _, payload in publisher.events
+        if payload["eventType"] == "TASK_TERMINATED"
+    ]
+    assert len(sample_events) == sample_count
+    assert all(len(payload["data"]) == 20 for payload in sample_events)
+    assert len(terminal_events) == 1
+    assert terminal_events[0]["status"] == "COMPLETED"
     with factory() as session:
         assert all(
             client.stat_object(bucket, row.object_key).size > 0

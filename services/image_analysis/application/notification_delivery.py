@@ -83,7 +83,43 @@ class ImageNotificationDelivery:
                 )
             else:
                 failed += 1
-        return DeliveryBatchResult(len(pending), published, failed)
+        with self.session_factory.begin() as session:
+            terminal = ImageAnalysisRepository(
+                session
+            ).claim_task_terminal_notifications(
+                owner=self.instance_id,
+                now=datetime.now(timezone.utc),
+                lease_seconds=self.lease_seconds,
+                limit=limit,
+                max_attempts=self.max_attempts,
+            )
+        for item in terminal:
+            confirmed = False
+            try:
+                self.publisher.publish(event_id=item.event_id, payload=item.payload)
+                confirmed = True
+            except Exception:
+                LOGGER.warning("图像任务终态通知发布失败: task_id=%s", item.task_id)
+            with self.session_factory.begin() as session:
+                settled = ImageAnalysisRepository(
+                    session
+                ).settle_task_terminal_notification(
+                    notification_id=item.notification_id,
+                    owner=self.instance_id,
+                    now=datetime.now(timezone.utc),
+                    confirmed=confirmed,
+                    max_attempts=self.max_attempts,
+                )
+            if confirmed and settled:
+                published += 1
+                LOGGER.info(
+                    "图像任务终态通知发布成功: task_id=%s, event_id=%s",
+                    item.task_id,
+                    item.event_id,
+                )
+            else:
+                failed += 1
+        return DeliveryBatchResult(len(pending) + len(terminal), published, failed)
 
 
 __all__ = ["DeliveryBatchResult", "ImageNotificationDelivery", "ImageResultPublisher"]

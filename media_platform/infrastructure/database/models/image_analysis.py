@@ -256,6 +256,54 @@ class ImageSampleModel(AuditColumnsMixin, Base):
     )
 
 
+class ImageTaskNotificationModel(AuditColumnsMixin, Base):
+    """每个图像任务只有一条终态通知，和采样结果通知分开持久化。"""
+
+    __tablename__ = "image_analysis_task_notification"
+    __table_args__ = (
+        UniqueConstraint("rwzj", name="uk_img_task_notice_task"),
+        UniqueConstraint("sjbh", name="uk_img_task_notice_event"),
+        Index("idx_img_task_notice_delivery", "tzzt", "tzzysj"),
+        {"comment": "课堂图像分析任务终态通知表"},
+    )
+
+    id = _id_column()
+    task_id = Column(
+        "rwzj",
+        String(36),
+        ForeignKey("media_task.zj", name="fk_img_task_notice_task"),
+        nullable=False,
+        comment="公共课堂分析任务主键",
+    )
+    event_id = Column("sjbh", String(64), nullable=False, comment="任务终态逻辑通知事件编号")
+    notification_payload = Column(
+        "tznr",
+        portable_json_type(),
+        nullable=True,
+        comment="发布前冻结的任务终态RabbitMQ通知消息JSON",
+    )
+    notification_status = Column(
+        "tzzt",
+        String(20),
+        nullable=False,
+        server_default=text("'WAITING'"),
+        comment="通知状态：WAITING、CLAIMED、PUBLISHED、FAILED",
+    )
+    notification_claim_owner = Column(
+        "tzzys", String(128), nullable=True, comment="通知发布领取实例标识"
+    )
+    notification_claim_until = Column(
+        "tzzysj", DateTime(), nullable=True, comment="通知发布领取租约截止时间"
+    )
+    notification_attempts = Column(
+        "tzcs",
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+        comment="通知发布尝试次数",
+    )
+
+
 class ImageFrameModel(AuditColumnsMixin, Base):
     """时间点中每个入选视频一张图片，保存抽帧和对象存储检查点。"""
 
@@ -349,4 +397,9 @@ class ImageFrameModel(AuditColumnsMixin, Base):
     )
 
 
-__all__ = ["ImageVideoModel", "ImageSampleModel", "ImageFrameModel"]
+__all__ = [
+    "ImageVideoModel",
+    "ImageSampleModel",
+    "ImageTaskNotificationModel",
+    "ImageFrameModel",
+]

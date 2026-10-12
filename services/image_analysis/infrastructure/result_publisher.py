@@ -61,6 +61,9 @@ class PikaImageResultPublisher:
     def publish(self, *, event_id: str, payload: dict) -> None:
         if not event_id or payload.get("eventId") != event_id:
             raise ValueError("图像通知事件编号不匹配")
+        event_type = payload.get("eventType")
+        if event_type not in {"SAMPLE_RESULT", "TASK_TERMINATED"}:
+            raise ValueError("图像通知事件类型无效")
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
             "utf-8"
         )
@@ -83,7 +86,11 @@ class PikaImageResultPublisher:
                         content_type="application/json",
                         content_encoding="utf-8",
                         message_id=event_id,
-                        type="image.analysis.sample",
+                        type=(
+                            "image.analysis.task.terminated"
+                            if event_type == "TASK_TERMINATED"
+                            else "image.analysis.sample"
+                        ),
                     ),
                     mandatory=True,
                 )

@@ -11,6 +11,7 @@ from media_platform.infrastructure.database.models.media_file import MediaFileMo
 from media_platform.infrastructure.database.models.image_analysis import (
     ImageFrameModel,
     ImageSampleModel,
+    ImageTaskNotificationModel,
     ImageVideoModel,
 )
 from media_platform.infrastructure.database.models.media_node import MediaNodeModel
@@ -29,6 +30,7 @@ __all__ = [
     "MediaFileModel",
     "ImageVideoModel",
     "ImageSampleModel",
+    "ImageTaskNotificationModel",
     "ImageFrameModel",
     "MediaNodeModel",
     "MediaStreamBindingModel",

@@ -159,7 +159,8 @@ class ClassroomImagePipeline:
             for video in plan.source_selection.selected_videos
         }
         uploaded = completed = skipped = 0
-        for sample in plan.samples:
+        sample_total = len(plan.samples)
+        for sample_index, sample in enumerate(plan.samples, start=1):
             sample_started = perf_counter()
             with self.session_factory() as session:
                 row = session.get(ImageSampleModel, sample.sample_id)
@@ -331,6 +332,13 @@ class ClassroomImagePipeline:
             payload = {
                 "id": request.message_id,
                 "eventId": event_id,
+                "eventType": "SAMPLE_RESULT",
+                "internalTaskId": task_id,
+                "sampleId": sample.sample_id,
+                "sampleIndex": sample_index,
+                "sampleTotal": sample_total,
+                "classroomOffsetMs": sample.classroom_offset_ms,
+                "capturedAt": sample.captured_at.isoformat(),
                 "aiType": "LLM",
                 "scheduleTime": request.to_payload()["scheduleTime"],
                 "schoolId": request.school_id,

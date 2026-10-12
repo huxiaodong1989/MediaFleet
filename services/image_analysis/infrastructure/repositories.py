@@ -21,6 +21,7 @@ from media_platform.contracts.image_analysis import (
 from media_platform.infrastructure.database.models import (
     ImageFrameModel,
     ImageSampleModel,
+    ImageTaskNotificationModel,
     ImageVideoModel,
     MediaTaskModel,
 )
@@ -102,6 +103,15 @@ class FrozenSampleInput:
 @dataclass(frozen=True)
 class PendingNotification:
     sample_id: str
+    event_id: str
+    payload: dict
+    attempts: int
+
+
+@dataclass(frozen=True)
+class PendingTaskNotification:
+    notification_id: str
+    task_id: str
     event_id: str
     payload: dict
     attempts: int
@@ -813,6 +823,16 @@ class ImageAnalysisRepository:
             or not isinstance(data.get("spaceId"), str)
             or not data["spaceId"]
             or notification_payload.get("eventId") != sample.event_id
+            or notification_payload.get("eventType") != "SAMPLE_RESULT"
+            or notification_payload.get("internalTaskId") != task_id
+            or notification_payload.get("sampleId") != sample_id
+            or not isinstance(notification_payload.get("sampleIndex"), int)
+            or notification_payload["sampleIndex"] < 1
+            or not isinstance(notification_payload.get("sampleTotal"), int)
+            or notification_payload["sampleTotal"] < notification_payload["sampleIndex"]
+            or notification_payload.get("classroomOffsetMs") != sample.offset_ms
+            or not isinstance(notification_payload.get("capturedAt"), str)
+            or not notification_payload["capturedAt"]
             or notification_payload.get("schoolId") != school_code
             or data
             != {
@@ -937,12 +957,245 @@ class ImageAnalysisRepository:
         self.session.flush()
         return True
 
+    def ensure_task_terminal_notification(
+        self,
+        *,
+        task_id: str,
+        school_code: str,
+    ) -> bool:
+        """任务进入最终状态时持久化唯一终态通知意图。"""
+        task = self.session.scalar(
+            select(MediaTaskModel)
+            .where(
+                MediaTaskModel.id == task_id,
+                MediaTaskModel.school_code == school_code,
+                MediaTaskModel.task_type == IMAGE_TASK_TYPE,
+            )
+            .with_for_update()
+        )
+        if task is None or task.status not in {"completed", "failed", "cancelled"}:
+            raise ValueError("图像任务尚未进入最终状态")
+        existing = self.session.scalar(
+            select(ImageTaskNotificationModel)
+            .where(ImageTaskNotificationModel.task_id == task_id)
+            .with_for_update()
+        )
+        if existing is not None:
+            return False
+        if task.status == "failed":
+            samples = list(
+                self.session.scalars(
+                    select(ImageSampleModel)
+                    .where(ImageSampleModel.task_id == task_id)
+                    .with_for_update()
+                )
+            )
+            for sample in samples:
+                if sample.status not in {"COMPLETED", "UNAVAILABLE", "FAILED"}:
+                    sample.status = "FAILED"
+                    sample.unavailable_reason = sample.unavailable_reason or "task_failed"
+        self.session.add(
+            ImageTaskNotificationModel(
+                id=str(uuid5(NAMESPACE_URL, "mediafleet-image-task-notice:" + task_id)),
+                task_id=task_id,
+                school_code=school_code,
+                event_id=str(
+                    uuid5(
+                        NAMESPACE_URL,
+                        "mediafleet-image-task-terminated:" + task_id,
+                    )
+                ),
+                notification_status="WAITING",
+            )
+        )
+        self.session.flush()
+        return True
+
+    @staticmethod
+    def _expected_sample_total(
+        task: MediaTaskModel, samples: list[ImageSampleModel]
+    ) -> int:
+        if samples:
+            return len(samples)
+        snapshot = (task.params or {}).get("request")
+        request = ImageAnalysisRequest.model_validate(snapshot)
+        interval_ms = request.sample_interval_seconds * 1000
+        return (request.duration_ms + interval_ms - 1) // interval_ms
+
+    @staticmethod
+    def _terminal_payload(
+        task: MediaTaskModel,
+        notice: ImageTaskNotificationModel,
+        samples: list[ImageSampleModel],
+    ) -> dict:
+        snapshot = (task.params or {}).get("request")
+        request = ImageAnalysisRequest.model_validate(snapshot)
+        sample_total = ImageAnalysisRepository._expected_sample_total(task, samples)
+        success_count = sum(row.status == "COMPLETED" for row in samples)
+        unavailable_count = sum(row.status == "UNAVAILABLE" for row in samples)
+        failed_count = max(sample_total - success_count - unavailable_count, 0)
+        if task.status == "completed" and failed_count == 0 and unavailable_count == 0:
+            analysis_status = "COMPLETED"
+        elif success_count:
+            analysis_status = "PARTIAL"
+        else:
+            analysis_status = "FAILED"
+        published_count = sum(row.notification_status == "PUBLISHED" for row in samples)
+        publish_failed_count = sum(
+            row.notification_status == "FAILED" and row.notification_payload is not None
+            for row in samples
+        )
+        completed_at = task.completed_at or datetime.now(timezone.utc)
+        if completed_at.tzinfo is None:
+            completed_at = completed_at.replace(tzinfo=timezone.utc)
+        return {
+            "id": request.message_id,
+            "eventId": notice.event_id,
+            "eventType": "TASK_TERMINATED",
+            "internalTaskId": task.id,
+            "scheduleTime": request.to_payload()["scheduleTime"],
+            "schoolId": request.school_id,
+            "classroomId": request.classroom_id,
+            "spaceId": request.space_id,
+            "status": analysis_status,
+            "sampleTotal": sample_total,
+            "successCount": success_count,
+            "failedCount": failed_count,
+            "unavailableCount": unavailable_count,
+            "resultPublishedCount": published_count,
+            "resultPublishFailedCount": publish_failed_count,
+            "finishedAt": completed_at.astimezone(timezone.utc).isoformat(),
+        }
+
+    def claim_task_terminal_notifications(
+        self,
+        *,
+        owner: str,
+        now: datetime,
+        lease_seconds: int,
+        limit: int = 20,
+        max_attempts: int = 10,
+    ) -> tuple[PendingTaskNotification, ...]:
+        """所有采样通知结束发布尝试后，才领取任务终态通知。"""
+        if (
+            not owner
+            or now.tzinfo is None
+            or lease_seconds < 1
+            or not 1 <= limit <= 100
+            or max_attempts < 1
+        ):
+            raise ValueError("任务终态通知领取参数无效")
+        current = _naive_utc(now)
+        notices = list(
+            self.session.scalars(
+                select(ImageTaskNotificationModel)
+                .where(
+                    or_(
+                        ImageTaskNotificationModel.notification_status == "WAITING",
+                        (ImageTaskNotificationModel.notification_status == "CLAIMED")
+                        & (
+                            ImageTaskNotificationModel.notification_claim_until
+                            < current
+                        ),
+                    )
+                )
+                .order_by(
+                    ImageTaskNotificationModel.created_at,
+                    ImageTaskNotificationModel.id,
+                )
+                .limit(limit)
+                .with_for_update()
+            )
+        )
+        claimed = []
+        for notice in notices:
+            if int(notice.notification_attempts or 0) >= max_attempts:
+                notice.notification_status = "FAILED"
+                notice.notification_claim_owner = None
+                notice.notification_claim_until = None
+                continue
+            task = self.session.get(MediaTaskModel, notice.task_id)
+            if task is None or task.status not in {"completed", "failed", "cancelled"}:
+                continue
+            samples = list(
+                self.session.scalars(
+                    select(ImageSampleModel)
+                    .where(ImageSampleModel.task_id == notice.task_id)
+                    .order_by(ImageSampleModel.offset_ms, ImageSampleModel.id)
+                )
+            )
+            if any(
+                row.notification_payload is not None
+                and row.notification_status not in {"PUBLISHED", "FAILED"}
+                for row in samples
+            ):
+                continue
+            payload = notice.notification_payload or self._terminal_payload(
+                task, notice, samples
+            )
+            if payload.get("eventId") != notice.event_id:
+                raise ValueError("任务终态通知事件编号不一致")
+            notice.notification_payload = payload
+            notice.notification_status = "CLAIMED"
+            notice.notification_claim_owner = owner
+            notice.notification_claim_until = current + timedelta(seconds=lease_seconds)
+            notice.notification_attempts = int(notice.notification_attempts or 0) + 1
+            claimed.append(notice)
+        self.session.flush()
+        return tuple(
+            PendingTaskNotification(
+                notification_id=row.id,
+                task_id=row.task_id,
+                event_id=row.event_id,
+                payload=row.notification_payload,
+                attempts=row.notification_attempts,
+            )
+            for row in claimed
+        )
+
+    def settle_task_terminal_notification(
+        self,
+        *,
+        notification_id: str,
+        owner: str,
+        now: datetime,
+        confirmed: bool,
+        max_attempts: int = 10,
+    ) -> bool:
+        if not owner or now.tzinfo is None or max_attempts < 1:
+            raise ValueError("任务终态通知结算参数无效")
+        row = self.session.scalar(
+            select(ImageTaskNotificationModel)
+            .where(ImageTaskNotificationModel.id == notification_id)
+            .with_for_update()
+        )
+        if (
+            row is None
+            or row.notification_status != "CLAIMED"
+            or row.notification_claim_owner != owner
+            or row.notification_claim_until is None
+            or row.notification_claim_until <= _naive_utc(now)
+        ):
+            return False
+        row.notification_status = (
+            "PUBLISHED"
+            if confirmed
+            else "FAILED"
+            if row.notification_attempts >= max_attempts
+            else "WAITING"
+        )
+        row.notification_claim_owner = None
+        row.notification_claim_until = None
+        self.session.flush()
+        return True
+
 
 __all__ = [
     "FrozenImage",
     "FrozenSampleInput",
     "ImageAnalysisRepository",
     "PendingNotification",
+    "PendingTaskNotification",
     "VideoReadAttempt",
     "source_identity_hash",
 ]

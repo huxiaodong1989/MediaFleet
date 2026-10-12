@@ -17,6 +17,7 @@ from media_platform.contracts.image_analysis import (
 from media_platform.infrastructure.database.models import (
     ImageFrameModel,
     ImageSampleModel,
+    ImageTaskNotificationModel,
     ImageVideoModel,
     MediaNodeModel,
     MediaTaskModel,
@@ -53,6 +54,7 @@ def factory(tmp_path):
         MediaTaskModel.__table__,
         ImageVideoModel.__table__,
         ImageSampleModel.__table__,
+        ImageTaskNotificationModel.__table__,
         ImageFrameModel.__table__,
     ]
     MediaTaskModel.metadata.create_all(engine, tables=tables)
@@ -357,6 +359,13 @@ def test_frozen_group_result_and_notification_survive_parent_completion(factory)
         "id": "message-1",
         "scheduleTime": "2026-09-29 08:20:00",
         "eventId": event_id,
+        "eventType": "SAMPLE_RESULT",
+        "internalTaskId": "task-1",
+        "sampleId": sample.sample_id,
+        "sampleIndex": 1,
+        "sampleTotal": 3,
+        "classroomOffsetMs": sample.classroom_offset_ms,
+        "capturedAt": sample.captured_at.isoformat(),
         "schoolId": "school-a",
         "data": {**metrics, "classroomId": "class-1", "spaceId": "space-1"},
     }
@@ -610,6 +619,75 @@ def test_expired_notification_claim_is_reissued_with_same_event(factory):
         assert again[0].event_id == first[0].event_id
         assert again[0].payload == first[0].payload
         assert again[0].attempts == 2
+
+
+def test_partial_task_publishes_one_terminal_event_after_sample_results(factory):
+    _task(factory)
+    request, plan, prompt = _case()
+    with factory.begin() as session:
+        session.get(MediaTaskModel, "task-1").params = {
+            "request": request.to_payload()
+        }
+    _initialize(factory, request, plan, prompt)
+    with factory.begin() as session:
+        task = session.get(MediaTaskModel, "task-1")
+        task.status = "failed"
+        task.completed_at = NOW.replace(tzinfo=None)
+        samples = sorted(
+            session.query(ImageSampleModel).all(), key=lambda row: row.offset_ms
+        )
+        samples[0].status = "COMPLETED"
+        samples[0].result = {"HEAD_UP": 1}
+        samples[0].notification_payload = {
+            "id": request.message_id,
+            "eventId": samples[0].event_id,
+            "eventType": "SAMPLE_RESULT",
+        }
+        samples[0].notification_status = "PUBLISHED"
+        samples[1].status = "FAILED"
+        samples[2].status = "FAILED"
+        repo = ImageAnalysisRepository(session)
+        assert repo.ensure_task_terminal_notification(
+            task_id="task-1", school_code="school-a"
+        )
+        assert not repo.ensure_task_terminal_notification(
+            task_id="task-1", school_code="school-a"
+        )
+
+    class Publisher:
+        sent = []
+
+        def publish(self, *, event_id, payload):
+            self.sent.append((event_id, payload))
+
+    publisher = Publisher()
+    batch = ImageNotificationDelivery(
+        factory, publisher, instance_id="terminal-publisher"
+    ).deliver_batch()
+    assert (batch.claimed, batch.published, batch.failed) == (1, 1, 0)
+    event_id, payload = publisher.sent[0]
+    assert payload == {
+        "id": "message-1",
+        "eventId": event_id,
+        "eventType": "TASK_TERMINATED",
+        "internalTaskId": "task-1",
+        "scheduleTime": request.to_payload()["scheduleTime"],
+        "schoolId": "school-a",
+        "classroomId": "class-1",
+        "spaceId": "space-1",
+        "status": "PARTIAL",
+        "sampleTotal": 3,
+        "successCount": 1,
+        "failedCount": 2,
+        "unavailableCount": 0,
+        "resultPublishedCount": 1,
+        "resultPublishFailedCount": 0,
+        "finishedAt": "2026-09-29T08:20:00+00:00",
+    }
+    with factory() as session:
+        notice = session.query(ImageTaskNotificationModel).one()
+        assert notice.notification_status == "PUBLISHED"
+        assert notice.notification_attempts == 1
 
 
 def test_video_read_budget_and_mode_survive_repository_reopen(factory):
@@ -937,6 +1015,11 @@ def test_classroom_pipeline_two_cameras_one_model_call_per_sample(factory, caplo
         assert all(row.status == "COMPLETED" for row in rows)
         assert all(row.notification_status == "PENDING" for row in rows)
         assert all(row.notification_payload["id"] == "message-1" for row in rows)
+        assert [
+            row.notification_payload["sampleIndex"]
+            for row in sorted(rows, key=lambda item: item.offset_ms)
+        ] == [1, 2, 3]
+        assert all(row.notification_payload["sampleTotal"] == 3 for row in rows)
         assert all(len(row.notification_payload["fileList"]) == 2 for row in rows)
         assert all(len(row.notification_payload["data"]) == 15 for row in rows)
         assert all(row.model_usage["model"] == "test-vision" for row in rows)
@@ -958,6 +1041,13 @@ def test_classroom_pipeline_two_cameras_one_model_call_per_sample(factory, caplo
     )
     assert again.skipped_samples == 3
     assert len(model.calls) == 3
+    with factory.begin() as session:
+        task = session.get(MediaTaskModel, "task-1")
+        task.status = "completed"
+        task.completed_at = NOW.replace(tzinfo=None)
+        assert ImageAnalysisRepository(session).ensure_task_terminal_notification(
+            task_id="task-1", school_code="school-a"
+        )
 
     class Publisher:
         sent = []
@@ -969,9 +1059,19 @@ def test_classroom_pipeline_two_cameras_one_model_call_per_sample(factory, caplo
     batch = ImageNotificationDelivery(
         factory, publisher, instance_id="image-publisher"
     ).deliver_batch()
-    assert (batch.claimed, batch.published, batch.failed) == (3, 3, 0)
-    assert len({event_id for event_id, _ in publisher.sent}) == 3
-    assert all(len(payload["fileList"]) == 2 for _, payload in publisher.sent)
+    assert (batch.claimed, batch.published, batch.failed) == (4, 4, 0)
+    assert len({event_id for event_id, _ in publisher.sent}) == 4
+    assert [payload["eventType"] for _, payload in publisher.sent] == [
+        "SAMPLE_RESULT",
+        "SAMPLE_RESULT",
+        "SAMPLE_RESULT",
+        "TASK_TERMINATED",
+    ]
+    assert all(
+        len(payload["fileList"]) == 2
+        for _, payload in publisher.sent
+        if payload["eventType"] == "SAMPLE_RESULT"
+    )
     assert "图像结果通知发布成功" in "\n".join(
         record.getMessage() for record in caplog.records
     )

@@ -36,9 +36,15 @@ POST /api/v1/tasks/image-analysis
 | 任务 Routing Key | `image.#` |
 
 结果默认发布到 Direct Exchange `image.analysis.result`，Routing Key 为
-`image.analysis.sample`。两者可以通过环境变量覆盖，但部署时必须预先建立有效下游绑定。
-发布器开启 Publisher Confirm 和 `mandatory`；无路由或未确认都视为失败，MySQL 中的通知
-状态会保留，后台扫描后再次投递。
+`image.analysis.sample`。采样事件的 AMQP `type` 为 `image.analysis.sample`，任务终态事件为
+`image.analysis.task.terminated`。Exchange 和 Routing Key 可以通过环境变量覆盖，但部署时
+必须预先建立有效下游绑定。发布器开启 Publisher Confirm 和 `mandatory`；无路由或未确认
+都视为失败，MySQL 中的通知状态会保留，后台扫描后再次投递。
+
+采样事件使用 `eventType=SAMPLE_RESULT`，包含内部任务、采样点、序号、总数、课堂偏移和
+采集时间。任务完成或最终失败后创建唯一的 `eventType=TASK_TERMINATED` 通知意图，汇总状态
+为 `COMPLETED`、`PARTIAL` 或 `FAILED`，并携带成功、失败、不可用、已发布和发布失败数量。
+任务终态事件只有在本任务全部采样通知进入 `PUBLISHED` 或 `FAILED` 后才允许发布。
 
 ## 3. 执行链路
 
@@ -68,6 +74,9 @@ sequenceDiagram
         Q->>R: 投递采样点结果
         I->>D: 标记通知已发布
     end
+    I->>D: 冻结任务终态汇总
+    I->>Q: Confirm 发布任务终态事件
+    Q->>R: 投递任务结束及采样统计
     I->>Q: 持久结果提交后 ACK 任务
 ```
 
@@ -81,19 +90,22 @@ URL 有效期必须覆盖通知补发窗口，长期中断后的重新签名仍�
 
 ## 4. 持久化模型
 
-图像分析复用 `media_task` 作为公共任务表，并增加三张检查点表：
+图像分析复用 `media_task` 作为公共任务表，并增加四张检查点和通知表：
 
 | 表 | 保存内容 |
 | --- | --- |
 | `image_analysis_video` | 原请求视频、探测证据、来源选择、读取模式和重试状态 |
 | `image_analysis_sample` | 课堂时间点、锁定 Prompt/模型、联合结果和通知状态 |
+| `image_analysis_task_notification` | 每个任务唯一的终态汇总、发布领取租约和尝试次数 |
 | `image_analysis_frame` | 每个采样点各来源的目标偏移、实际 PTS、图片对象键和处理状态 |
 
 `prompt_version` 同时承载内容分析和图像分析方案，通过方案类型隔离。图像任务创建时锁定已
 发布版本及内容摘要，执行期间发布新 Prompt 不会改变既有任务。
 
-数据库升级由 `20261009_0002_add_image_analysis.py` 提供。生产环境应在受控发布步骤执行
-Alembic，避免多个服务副本同时运行 DDL。
+图像检查点由 `20261009_0002_add_image_analysis.py` 创建，任务终态通知由
+`20261012_0003_add_image_task_notification.py` 增量创建。新迁移在 MySQL 中读取现有
+`media_task.zj` 的长度、字符集和排序规则生成外键列，避免历史环境字符定义不同导致 DDL
+失败。生产环境应在受控发布步骤执行 Alembic，避免多个服务副本同时运行 DDL。
 
 ## 5. 并发与扩展
 
@@ -107,6 +119,11 @@ Alembic，避免多个服务副本同时运行 DDL。
 
 RabbitMQ prefetch 与课堂额度一致，取得内存额度后仍要通过 MySQL 条件更新获取任务租约。
 进程内信号量只提供反压，不能作为任务所有权依据。
+
+任务重试代次同样以 MySQL 为准。如果处理线程已把 `retry_count` 更新到下一代次，但在重试
+消息发布或原消息 ACK 前连接中断，Broker 可能重投旧 attempt。消费者会把落后消息视为
+可恢复错误，逐代提升 attempt 直到和 MySQL 一致；任务仍处于 `processing` 时，旧重复消息
+继续按忙碌处理，不会抢占当前租约。
 
 ## 6. 安全要求
 

@@ -26,6 +26,7 @@ from media_platform.infrastructure.database.models import (  # noqa: F401
     ContentEvaluationStepModel,
     ImageFrameModel,
     ImageSampleModel,
+    ImageTaskNotificationModel,
     ImageVideoModel,
 )
 
@@ -46,6 +47,7 @@ CONTENT_ANALYSIS_TABLES = {
 IMAGE_ANALYSIS_TABLES = {
     "image_analysis_video",
     "image_analysis_sample",
+    "image_analysis_task_notification",
     "image_analysis_frame",
 }
 APPLICATION_TABLES = CORE_TABLES | CONTENT_ANALYSIS_TABLES | IMAGE_ANALYSIS_TABLES
@@ -129,17 +131,20 @@ def test_development_auto_init_creates_current_tables():
         engine.dispose()
 
 
-def test_alembic_has_clean_baseline_and_image_analysis_revision():
+def test_alembic_has_clean_baseline_and_image_analysis_revisions():
     config = Config(str(ROOT / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20261009_0002"]
+    assert scripts.get_heads() == ["20261012_0003"]
     revision = scripts.get_revision("20260928_0001")
     assert revision is not None
     assert revision.down_revision is None
     image_revision = scripts.get_revision("20261009_0002")
     assert image_revision is not None
     assert image_revision.down_revision == "20260928_0001"
+    terminal_revision = scripts.get_revision("20261012_0003")
+    assert terminal_revision is not None
+    assert terminal_revision.down_revision == "20261009_0002"
 
 
 def test_alembic_uses_project_version_table():
