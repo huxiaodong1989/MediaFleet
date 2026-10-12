@@ -81,6 +81,11 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   分类、GET/HEAD 有限重试、`Retry-After`、分页筛选、UTC 时间兼容和未知字段向后兼容。
 - 根项目使用 uv workspace 管理 SDK；CI 增加 Python 3.10–3.12 SDK 测试、轻量依赖隔离、
   SDK 构建和导入检查，并将 SDK 纳入 Ruff 与 Compileall。
+- 新增独立 `mediafleet-cli` 包，通过 SDK 提供健康、总览、任务、产物、节点、绑定和录制
+  服务器只读命令，支持 Rich 人工输出、稳定 JSON、有界分页、常用筛选和固定退出码。
+- CLI context 配置只保存 URL 与可选 CA 文件并使用原子写入；API Key 只从环境变量或系统
+  keyring 读取，不提供明文命令参数，也不会写入配置文件。
+- CI 增加 Python 3.10–3.12 CLI 测试、轻量依赖检查、SDK/CLI Wheel 成对安装和命令入口检查。
 
 ## 验证
 
@@ -155,6 +160,14 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   构建成功，独立 SDK 环境确认不包含 FastAPI、SQLAlchemy、Pika 或 Torch。
 - SDK 实施后的根仓库全量验证为 `681 passed, 3 skipped`；Gitleaks `v8.28.0` 对 SDK、契约
   测试、相关文档、CI、根构建配置和锁文件扫描未发现泄漏。
+- CLI 单元和 SDK 请求链路测试 `32 passed`，覆盖全部只读命令、分页与筛选、context、凭据
+  标准输入、keyring 不可用、JSON 标准输出/错误输出、退出码、密钥不回显和公开健康端点不发送
+  认证头。
+- CLI sdist 与 Wheel 构建成功；在干净 Python 3.12 环境中成对安装 SDK/CLI Wheel 后，
+  `mediafleet --help` 和 `mediafleet version --json` 通过，且环境不包含 FastAPI、SQLAlchemy、
+  Pika 或 Torch。
+- CLI 实施后的根仓库全量验证为 `681 passed, 3 skipped`；`uv lock --check`、Ruff、额外
+  F401 检查、Compileall 和 `git diff --check` 通过。
 
 ## 剩余风险
 
@@ -185,12 +198,14 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   加载和推理回归测试逐项评估，不能直接自动合并。
 - SDK 当前仍使用共享 API Key，只能继承控制中心现有的粗粒度认证，不能区分调用方身份或
   权限范围；因此本阶段保持只读，尚未发布 PyPI，也未承诺稳定公共 API。
+- CLI 尚未连接部门真实控制中心验证证书、keyring 后端和人工表格显示；SDK 与 CLI 均未发布
+  PyPI，因此当前安装验证需要同时提供两个同版本本地 Wheel。
 
 ## 下一步
 
 在部门测试环境备份 MySQL 后执行 `20261016_0004` 迁移，单实例导入两类分析服务原部署
 配置，再验证配置发布/回滚、真实任务锁版、RabbitMQ ACK 超时与回调兼容。图像接单继续
 保持关闭，直到录像、对象存储、视觉模型、终态通知和签名地址补发通过联调。
-审核 SDK 的公共命名、模型和错误层级，合并独立 SDK PR 后从最新 `main` 创建 CLI 分支，
-按已确认方案实现只读命令、配置、凭据库、JSON 输出和稳定退出码。SDK 在进入 PyPI 发布流程
+审核 CLI 的命令层级、配置位置、JSON 格式和退出码，再创建独立 CLI PR；CLI 审核通过前不开始
+MCP 实现。SDK 与 CLI 在进入 PyPI 发布流程
 前继续保持 `0.1.0` Alpha，并补版本发布、兼容性和弃用策略。

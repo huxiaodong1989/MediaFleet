@@ -151,7 +151,7 @@ override-dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/mediafleet-sdk"]
+members = ["packages/mediafleet-sdk", "packages/mediafleet-cli"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -315,7 +315,7 @@ mediafleet_list_recording_servers
 
 审核点：确认 SDK 公共命名、模型和错误层级后，再进入 CLI。
 
-### 阶段 B：只读 CLI
+### 阶段 B：只读 CLI（已实现，等待独立 PR 审核）
 
 范围：
 
@@ -330,7 +330,7 @@ mediafleet_list_recording_servers
 - API Key 不出现在参数、输出或错误中。
 - Wheel 安装后 `mediafleet --help` 和只读命令可运行。
 
-审核点：确认命令层级、配置位置和输出格式后，再进入 MCP。
+审核点：实现已经完成；确认命令层级、配置位置和输出格式后，再进入 MCP。
 
 ### 阶段 C：只读 MCP
 

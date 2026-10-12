@@ -1,7 +1,7 @@
 # REST、SDK、CLI 与 MCP 接口架构
 
 MediaFleet 使用一套应用用例和多种入口适配器。REST 是稳定远程契约；Python SDK 封装
-REST；规划中的 CLI、MCP 和现有运维控制台通过 SDK 或相同 REST 语义调用，统一鉴权、授权、审计、
+REST；CLI、规划中的 MCP 和现有运维控制台通过 SDK 或相同 REST 语义调用，统一鉴权、授权、审计、
 幂等和错误处理。
 
 ```mermaid
@@ -9,7 +9,7 @@ flowchart TB
     REST[REST / OpenAPI]
     Console[运维控制台]
     SDK[Python SDK：只读资源已实现]
-    CLI[mediafleet CLI：规划中]
+    CLI[mediafleet CLI：只读命令已实现]
     MCP[MCP Server：规划中]
     App[应用服务]
     Ports[仓储 / 消息 / 存储端口]
@@ -44,17 +44,21 @@ SDK 使用 `X-API-Key` 请求头访问受保护接口，提供类型化响应、
 写资源仍等待调用方身份、权限范围、可信审计和幂等策略完成后再设计。SDK 当前只在仓库内
 构建和安装验证，尚未发布到 PyPI。
 
-## CLI 要求
+## CLI
 
-计划中的 `mediafleet` 命令应具备：
+仓库中的 [`packages/mediafleet-cli`](../../packages/mediafleet-cli/README.md) 是独立安装包，
+发行名为 `mediafleet-cli`，命令名为 `mediafleet`。CLI 通过同步 SDK 访问控制中心，当前提供：
 
 - 稳定退出码和可机器读取的 `--json` 输出；
 - 非交互运行方式，适合 CI 和运维脚本；
-- 健康、节点、绑定、任务、录制、产物和允许列表配置等命令；
-- 从环境变量、受保护配置文件或操作系统凭据库读取认证信息；
-- 变更操作支持显式参数、幂等键和可审计请求身份。
+- 健康、总览、节点、绑定、任务、产物和录制服务器只读查询；
+- 有界分页和任务、绑定筛选参数；
+- context、环境变量、自定义 CA 和操作系统凭据库配置；
+- JSON 错误写入标准错误，标准输出不混入日志。
 
-凭据不能被强制放在会出现在进程列表或 Shell 历史中的命令行参数中。
+非敏感连接配置使用原子写入的 JSON 文件。API Key 只从 `MEDIAFLEET_API_KEY` 或 keyring
+读取，不能通过命令值参数传入，也不会保存到配置文件。CLI 当前全部只读；变更操作等待调用方
+身份、权限范围、可信审计和幂等策略完成后再设计。
 
 ## MCP 要求
 

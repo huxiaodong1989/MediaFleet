@@ -95,7 +95,8 @@ flowchart TB
         Client[业务客户端 / RTC]
         Ops[运维控制台]
         SDK[Python SDK]
-        Future[规划中的 CLI / MCP]
+        CLI[只读 CLI]
+        Future[规划中的 MCP]
     end
 
     subgraph ControlPlane[控制平面]
@@ -124,6 +125,7 @@ flowchart TB
     Client --> C2
     Ops --> C1
     SDK --> C1
+    CLI --> SDK
     Future --> SDK
     C1 <--> DB
     C2 <--> DB

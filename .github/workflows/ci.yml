@@ -25,6 +25,7 @@ jobs:
       - run: uv run python -m compileall media_platform services packages
       - run: uv build
       - run: uv build --package mediafleet-sdk
+      - run: uv build --package mediafleet-cli
       - name: Validate Docker Compose files
         shell: bash
         run: |
@@ -78,6 +79,50 @@ jobs:
 
           assert MediaFleetClient
           assert AsyncMediaFleetClient
+          for package in ("fastapi", "sqlalchemy", "pika", "torch"):
+              assert importlib.util.find_spec(package) is None, package
+          PY
+
+  cli:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.20"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen --package mediafleet-cli
+      - run: uv run --frozen --package mediafleet-cli pytest -q packages/mediafleet-cli/tests
+      - run: uv run --frozen --package mediafleet-cli mediafleet --help
+      - name: Validate installed CLI wheels
+        if: matrix.python-version == '3.12'
+        shell: bash
+        run: |
+          artifact_dir="$RUNNER_TEMP/mediafleet-cli-wheels"
+          venv_dir="$RUNNER_TEMP/mediafleet-cli-wheel-venv"
+          mkdir -p "$artifact_dir"
+          uv build --package mediafleet-sdk --out-dir "$artifact_dir"
+          uv build --package mediafleet-cli --out-dir "$artifact_dir"
+          uv venv "$venv_dir" --python "${{ matrix.python-version }}"
+          uv pip install --python "$venv_dir/bin/python" \
+            "$artifact_dir"/mediafleet_sdk-*.whl \
+            "$artifact_dir"/mediafleet_cli-*.whl
+          "$venv_dir/bin/mediafleet" --help
+          "$venv_dir/bin/mediafleet" version --json
+      - name: Validate lightweight CLI dependencies
+        shell: bash
+        run: |
+          uv run --frozen --package mediafleet-cli python - <<'PY'
+          import importlib.util
+          from mediafleet_cli.main import app
+
+          assert app
           for package in ("fastapi", "sqlalchemy", "pika", "torch"):
               assert importlib.util.find_spec(package) is None, package
           PY
