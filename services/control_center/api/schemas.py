@@ -143,7 +143,11 @@ class TaskCreateRequest(BaseModel):
         description="可选定向执行节点；通用竞争任务通常不传",
     )
     created_by: str = Field(
-        default="SYSTEM", min_length=1, max_length=64, description="创建人"
+        default="SYSTEM",
+        min_length=1,
+        max_length=64,
+        deprecated=True,
+        description="兼容旧客户端；服务端忽略该值，创建人取自认证凭据身份",
     )
 
 
@@ -543,7 +547,8 @@ class RecordingServerStatusUpdateRequest(BaseModel):
         default="control-center-admin",
         min_length=1,
         max_length=64,
-        description="操作人",
+        deprecated=True,
+        description="兼容旧客户端；服务端忽略该值，操作人取自认证凭据身份",
     )
 
 

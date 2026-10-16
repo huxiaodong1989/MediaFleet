@@ -22,6 +22,7 @@ from mediafleet_sdk.resources import (
     BindingsResource,
     NodesResource,
     RecordingServersResource,
+    RecordingsResource,
     SecurityResource,
     SystemResource,
     TasksResource,
@@ -29,7 +30,7 @@ from mediafleet_sdk.resources import (
 
 
 class MediaFleetClient:
-    """通过控制中心 REST API 读取 MediaFleet 状态。"""
+    """通过控制中心 REST API 查询和管理 MediaFleet。"""
 
     def __init__(
         self,
@@ -63,6 +64,7 @@ class MediaFleetClient:
         self.nodes = NodesResource(self)
         self.bindings = BindingsResource(self)
         self.recording_servers = RecordingServersResource(self)
+        self.recordings = RecordingsResource(self)
         self.security = SecurityResource(self)
 
     @property

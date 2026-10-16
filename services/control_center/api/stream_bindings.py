@@ -14,8 +14,10 @@ from media_platform.domain.stream import (
 )
 from services.control_center.api.dependencies import (
     get_stream_binding_service,
+    get_authenticated_principal,
     verify_internal_api_key,
 )
+from services.control_center.application.api_security_service import AuthenticatedPrincipal
 from services.control_center.api.schemas import (
     StreamBindingCreateRequest,
     StreamBindingResponse,
@@ -127,12 +129,13 @@ def bind_stream(
 )
 def release_stream_binding(
     binding_id: str,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     service: MediaStreamBindingService = Depends(get_stream_binding_service),
 ) -> StreamBindingResponse:
     """释放绑定并归还录制服务器容量名额。"""
 
     try:
-        result = service.release_binding(binding_id)
+        result = service.release_binding(binding_id, updated_by=principal.caller_id)
     except StreamBindingConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

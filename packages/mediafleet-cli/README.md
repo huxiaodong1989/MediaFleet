@@ -91,6 +91,15 @@ mediafleet node list
 mediafleet binding list
 mediafleet recorder list
 
+mediafleet task create --file task.json --idempotency-key STABLE_KEY
+mediafleet task retry TASK_ID --yes
+mediafleet task callback-retry TASK_ID --yes
+mediafleet binding create --file binding.json
+mediafleet binding release BINDING_ID --yes
+mediafleet recording start --file recording.json
+mediafleet recording stop TASK_ID --yes
+mediafleet recorder set-status CODE STATUS --yes
+
 mediafleet security scopes
 mediafleet security credential list
 mediafleet security credential create --caller-id ID --display-name NAME --name KEY --scope read
@@ -109,6 +118,11 @@ mediafleet task get TASK_ID --no-color
 ```
 
 `health` 对应公开健康端点，只要求配置控制中心 URL。其他查询命令还要求 API Key。
+
+创建任务、流绑定和录制请求支持 `--file FILE` 或 `--stdin`，两者必须二选一。输入必须是
+UTF-8 JSON 对象，最大 1 MiB，未声明字段会被拒绝。任务创建的 `--idempotency-key` 必须在同一
+业务请求的重试中保持不变。任务重试、回调补发、绑定释放、停止录制和录制服务器状态变更
+必须显式传入 `--yes`。
 
 ## JSON 与退出码
 
@@ -133,5 +147,5 @@ mediafleet task get TASK_ID --no-color
 - API Key 只从环境变量或操作系统凭据库读取。
 - CLI 不提供通用 HTTP、SQL、Shell、消息发布或文件访问入口。
 - 凭据创建和轮换产生的 API Key 只在成功响应中显示一次，不写入配置文件或日志。
-- 轮换和吊销必须显式传入 `--yes`；其他业务写命令仍按资源逐步开放。
-- 轮换和吊销必须显式传入 `--yes`；其他业务写命令仍按资源逐步开放。
+- 凭据轮换、吊销和改变既有业务状态的命令必须显式传入 `--yes`。
+- 写请求使用固定的类型化 SDK 资源，不提供通用 HTTP 代理。

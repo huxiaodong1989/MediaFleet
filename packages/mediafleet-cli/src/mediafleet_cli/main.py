@@ -16,6 +16,7 @@ from mediafleet_cli.commands.query import (
     task_app,
 )
 from mediafleet_cli.commands.security import security_app
+from mediafleet_cli.commands.write import recording_app
 from mediafleet_cli.output import console, emit_json
 
 app = typer.Typer(
@@ -31,6 +32,7 @@ app.add_typer(task_app, name="task")
 app.add_typer(node_app, name="node")
 app.add_typer(binding_app, name="binding")
 app.add_typer(recorder_app, name="recorder")
+app.add_typer(recording_app, name="recording")
 app.add_typer(context_app, name="context")
 app.add_typer(auth_app, name="auth")
 app.add_typer(security_app, name="security")

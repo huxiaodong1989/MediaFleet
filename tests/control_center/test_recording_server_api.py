@@ -85,6 +85,13 @@ def test_recorder_heartbeat_registers_server_and_status_survives_heartbeat(tmp_p
                 json={"status": "DRAINING", "updated_by": "operator"},
                 headers=headers,
             )
+            with factory() as session:
+                server_after_status = session.scalar(
+                    sa.select(RecordingServerModel).where(
+                        RecordingServerModel.server_code == "recording-server-01"
+                    )
+                )
+                status_updated_by = server_after_status.updated_by
             repeated_heartbeat = client.post(
                 "/api/v1/nodes/heartbeat",
                 json=_recorder_heartbeat(),
@@ -102,6 +109,7 @@ def test_recorder_heartbeat_registers_server_and_status_survives_heartbeat(tmp_p
         assert servers.json()[0]["play_host"] == "zlm.example.com"
         assert servers.json()[0]["rtmp_port"] == "1935"
         assert servers.json()[0]["rtsp_port"] == "554"
+        assert status_updated_by == "bootstrap"
     finally:
         engine.dispose()
 

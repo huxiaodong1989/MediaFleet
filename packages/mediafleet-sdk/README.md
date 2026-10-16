@@ -49,7 +49,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## 只读资源
+## 资源
 
 | 调用 | 用途 |
 | --- | --- |
@@ -68,8 +68,19 @@ asyncio.run(main())
 | `client.security.rotate_credential(id)` | 立即轮换凭据 |
 | `client.security.revoke_credential(id)` | 吊销凭据 |
 | `client.security.list_audit_events(...)` | 查询写请求审计 |
+| `client.tasks.create(request, idempotency_key=...)` | 创建通用媒体任务 |
+| `client.tasks.retry(task_id)` | 重新投递失败或已取消任务 |
+| `client.tasks.retry_callback(task_id)` | 补发终态任务业务回调 |
+| `client.bindings.create(request)` | 创建或复用流绑定 |
+| `client.bindings.release(binding_id)` | 幂等释放流绑定 |
+| `client.recordings.start(request)` | 开始录制 |
+| `client.recordings.stop(task_id)` | 停止录制并继续后处理 |
+| `client.recording_servers.update_status(code, status)` | 更新录制服务器运维状态 |
 
 同步与异步客户端使用相同资源名；异步方法需要 `await`。
+
+任务创建必须提供 8 到 128 个字符的稳定幂等键。同一次业务请求因网络或进程重启而再次提交
+时必须复用原值。写请求模型拒绝额外字段，POST、PATCH 和 DELETE 不会自动重试。
 
 ## 认证和错误
 

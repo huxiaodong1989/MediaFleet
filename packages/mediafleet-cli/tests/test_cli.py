@@ -8,20 +8,26 @@ from typer.testing import CliRunner
 from mediafleet_cli.commands import auth as auth_commands
 from mediafleet_cli.commands import query as query_commands
 from mediafleet_cli.commands import security as security_commands
+from mediafleet_cli.commands import write as write_commands
 from mediafleet_cli.main import app
 from mediafleet_sdk import AuthenticationError
 from mediafleet_sdk.models import (
     AdminOverview,
     BindingPage,
+    BindingEndpoint,
     BindingSummary,
     NodePage,
     NodeSummary,
     QueueSummary,
     RecordingServer,
+    RecordingCommandResult,
     ServiceHealth,
     TaskDetail,
     TaskFile,
     TaskPage,
+    TaskCreateResult,
+    TaskRetryResult,
+    CallbackRetryResult,
     TaskSummary,
     AuditEvent,
     Credential,
@@ -152,14 +158,47 @@ class FakeClient:
             list=TaskPage(items=[task], total=1, page=1, page_size=20),
             get=detail,
             list_files=[task_file],
+            create=TaskCreateResult(task_id="task-created", created=True),
+            retry=TaskRetryResult(accepted=True, task=task),
+            retry_callback=CallbackRetryResult(
+                accepted=True,
+                callback_result={"success": True},
+            ),
         )
         self.nodes = Resource(
             list=NodePage(items=[node], total=1, page=1, page_size=20)
         )
         self.bindings = Resource(
-            list=BindingPage(items=[binding], total=1, page=1, page_size=20)
+            list=BindingPage(items=[binding], total=1, page=1, page_size=20),
+            create=BindingEndpoint(
+                stream_id="stream-1",
+                api_url="https://zlm.example.invalid",
+                server_id="zlm-1",
+                ip="192.0.2.10",
+            ),
+            release=BindingEndpoint(
+                stream_id="stream-1",
+                api_url="https://zlm.example.invalid",
+                server_id="zlm-1",
+                ip="192.0.2.10",
+            ),
         )
-        self.recording_servers = Resource(list=[recorder])
+        self.recording_servers = Resource(list=[recorder], update_status=recorder)
+        recording_result = RecordingCommandResult(
+            accepted=True,
+            command="record.start",
+            task_id="recording-1",
+            target_node_id="node-id-1",
+            binding_id="binding-1",
+            app="live",
+            stream_id="stream-1",
+            message_id="message-1",
+            confirmed=True,
+        )
+        self.recordings = Resource(
+            start=recording_result,
+            stop=recording_result.model_copy(update={"command": "record.stop"}),
+        )
         credential = Credential(
             credential_id="credential-1",
             caller_id="ci.automation",
@@ -212,6 +251,7 @@ def fake_client(monkeypatch):
 
     monkeypatch.setattr(query_commands, "create_client", create)
     monkeypatch.setattr(security_commands, "create_client", create)
+    monkeypatch.setattr(write_commands, "create_client", create)
     return client, calls
 
 
@@ -362,6 +402,174 @@ def test_rotate_and_revoke_require_explicit_yes(fake_client):
     assert rotate.exit_code == 2
     assert revoke.exit_code == 2
     assert "--yes" in rotate.stderr
+
+
+@pytest.mark.parametrize(
+    ("arguments", "stdin_text"),
+    [
+        (
+            [
+                "task",
+                "create",
+                "--stdin",
+                "--idempotency-key",
+                "task-create-001",
+                "--json",
+            ],
+            json.dumps(
+                {
+                    "school_code": "SCHOOL",
+                    "task_type": "video.cover.extract",
+                    "callback_url": "https://callback.example.invalid/result",
+                    "params": {},
+                }
+            ),
+        ),
+        (
+            ["binding", "create", "--stdin", "--json"],
+            json.dumps(
+                {
+                    "school_code": "10001",
+                    "resource_type": "CAMERA",
+                    "stream_id": "stream-1",
+                    "app": "live",
+                }
+            ),
+        ),
+        (
+            ["recording", "start", "--stdin", "--json"],
+            json.dumps({"task_id": "recording-1", "stream_id": "stream-1"}),
+        ),
+        (["task", "retry", "task-1", "--yes", "--json"], None),
+        (["task", "callback-retry", "task-1", "--yes", "--json"], None),
+        (["binding", "release", "binding-1", "--yes", "--json"], None),
+        (["recording", "stop", "recording-1", "--yes", "--json"], None),
+        (
+            [
+                "recorder",
+                "set-status",
+                "recorder-1",
+                "draining",
+                "--yes",
+                "--json",
+            ],
+            None,
+        ),
+    ],
+)
+def test_business_write_commands_emit_json(fake_client, arguments, stdin_text):
+    result = runner.invoke(app, arguments, input=stdin_text)
+
+    assert result.exit_code == 0, result.output
+    assert parse_stdout(result) is not None
+
+
+def test_task_create_forwards_stable_idempotency_key(fake_client):
+    client, _ = fake_client
+    result = runner.invoke(
+        app,
+        [
+            "task",
+            "create",
+            "--stdin",
+            "--idempotency-key",
+            "stable-task-key",
+            "--json",
+        ],
+        input=json.dumps(
+            {
+                "school_code": "SCHOOL",
+                "task_type": "video.cover.extract",
+                "callback_url": "https://callback.example.invalid/result",
+            }
+        ),
+    )
+
+    assert result.exit_code == 0, result.output
+    name, args, kwargs = client.tasks.calls[-1]
+    assert name == "create"
+    assert args[0].task_type == "video.cover.extract"
+    assert kwargs == {"idempotency_key": "stable-task-key"}
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["task", "retry", "task-1", "--json"],
+        ["task", "callback-retry", "task-1", "--json"],
+        ["binding", "release", "binding-1", "--json"],
+        ["recording", "stop", "recording-1", "--json"],
+        ["recorder", "set-status", "recorder-1", "ACTIVE", "--json"],
+    ],
+)
+def test_destructive_business_commands_require_yes(fake_client, arguments):
+    result = runner.invoke(app, arguments)
+
+    assert result.exit_code == 2
+    assert "--yes" in result.stderr
+
+
+def test_write_json_requires_one_source_and_rejects_unknown_fields(fake_client, tmp_path):
+    request_file = tmp_path / "task.json"
+    request_file.write_text(
+        json.dumps(
+            {
+                "school_code": "SCHOOL",
+                "task_type": "video.cover.extract",
+                "callback_url": "https://callback.example.invalid/result",
+                "routing_key": "forbidden",
+            }
+        ),
+        encoding="utf-8",
+    )
+    missing = runner.invoke(
+        app,
+        ["task", "create", "--idempotency-key", "task-create-001", "--json"],
+    )
+    both = runner.invoke(
+        app,
+        [
+            "task",
+            "create",
+            "--file",
+            str(request_file),
+            "--stdin",
+            "--idempotency-key",
+            "task-create-001",
+            "--json",
+        ],
+        input="{}",
+    )
+    unknown = runner.invoke(
+        app,
+        [
+            "task",
+            "create",
+            "--file",
+            str(request_file),
+            "--idempotency-key",
+            "task-create-001",
+            "--json",
+        ],
+    )
+
+    assert missing.exit_code == 2
+    assert both.exit_code == 2
+    assert unknown.exit_code == 2
+    assert "routing_key" in unknown.stderr
+
+
+def test_write_json_enforces_size_limit(fake_client, tmp_path):
+    request_file = tmp_path / "large.json"
+    request_file.write_bytes(b"{" + b" " * write_commands.MAX_REQUEST_BYTES + b"}")
+
+    result = runner.invoke(
+        app,
+        ["binding", "create", "--file", str(request_file), "--json"],
+    )
+
+    assert result.exit_code == 2
+    assert "1 MiB" in result.stderr
 
 
 def test_json_error_uses_stderr_and_authorization_exit_code(monkeypatch):

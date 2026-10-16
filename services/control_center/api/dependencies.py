@@ -61,6 +61,8 @@ def _required_scopes(request: Request) -> frozenset[str]:
     path = request.url.path
     if path.startswith("/api/v1/admin/security"):
         return frozenset({ADMIN_WRITE})
+    if path.startswith("/api/v1/admin/tasks/"):
+        return frozenset({TASK_WRITE})
     if path == "/api/v1/nodes/select":
         return frozenset({READ})
     if request.method in {"GET", "HEAD", "OPTIONS"}:

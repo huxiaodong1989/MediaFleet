@@ -3,7 +3,7 @@
 from hashlib import sha256
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
 from media_platform.common.redaction import sanitize_url
@@ -26,8 +26,10 @@ from services.control_center.api.dependencies import (
     get_image_intake_service,
     get_task_dispatch_service,
     get_task_query_service,
+    get_authenticated_principal,
     verify_internal_api_key,
 )
+from services.control_center.application.api_security_service import AuthenticatedPrincipal
 from services.control_center.application.admin_service import (
     AdminOperationError,
     AdminService,
@@ -218,6 +220,13 @@ def get_class_evaluation_result(
 )
 def create_media_task(
     request: TaskCreateRequest,
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        min_length=8,
+        max_length=128,
+    ),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     service: TaskDispatchService = Depends(get_task_dispatch_service),
 ) -> TaskCreateResponse:
     """创建通用媒体任务。
@@ -243,9 +252,10 @@ def create_media_task(
             priority=request.priority,
             max_retries=request.max_retries,
             params=request.params,
+            idempotency_key=idempotency_key,
             callback_url=request.callback_url,
             target_node_id=request.target_node_id,
-            created_by=request.created_by,
+            created_by=principal.caller_id,
         )
     )
     LOGGER.info(

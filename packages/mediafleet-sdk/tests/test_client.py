@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from typing import Any
 
 import httpx
@@ -20,7 +21,12 @@ from mediafleet_sdk import (
     TransportError,
     ValidationError,
 )
-from mediafleet_sdk.models import CredentialCreate
+from mediafleet_sdk.models import (
+    BindingCreate,
+    CredentialCreate,
+    RecordingStart,
+    TaskCreate,
+)
 
 
 API_KEY = "sdk-test-placeholder-key"
@@ -129,6 +135,149 @@ def test_security_read_models_parse_and_hide_absent_plaintext() -> None:
         assert "admin:write" in client.security.scopes().scopes
         assert client.security.list_credentials()[0].api_key is None
         assert client.security.list_audit_events(limit=10)[0].http_status == 201
+
+
+def test_business_write_resources_send_typed_requests_and_encoded_paths() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        path = request.url.path
+        if path == "/api/v1/tasks":
+            return httpx.Response(200, json={"task_id": "task-1", "created": True})
+        if path.endswith("/retry") and "/callback/" not in path:
+            return httpx.Response(
+                200,
+                json={"accepted": True, "task": _task_summary(status="pending")},
+            )
+        if path.endswith("/callback/retry"):
+            return httpx.Response(
+                200,
+                json={"accepted": True, "callback_result": {"success": True}},
+            )
+        if path == "/api/v1/rtc/stream-bindings":
+            return httpx.Response(
+                200,
+                json={
+                    "stream_id": "stream-1",
+                    "api_url": "https://zlm.example.invalid",
+                    "server_id": "zlm-1",
+                    "ip": "192.0.2.10",
+                },
+            )
+        if path.startswith("/api/v1/rtc/stream-bindings/"):
+            return httpx.Response(
+                200,
+                json={
+                    "stream_id": "stream-1",
+                    "api_url": "https://zlm.example.invalid",
+                    "server_id": "zlm-1",
+                    "ip": "192.0.2.10",
+                },
+            )
+        if path in {"/api/v1/recordings/start", "/api/v1/recordings/stop"}:
+            command = "record.start" if path.endswith("start") else "record.stop"
+            return httpx.Response(
+                200,
+                json={
+                    "accepted": True,
+                    "command": command,
+                    "task_id": "recording-1",
+                    "target_node_id": "node-1",
+                    "binding_id": "binding-1",
+                    "app": "live",
+                    "stream_id": "stream-1",
+                    "message_id": f"recording-1:{command}",
+                    "confirmed": True,
+                },
+            )
+        if path.startswith("/api/v1/recording-servers/"):
+            return httpx.Response(
+                200,
+                json={
+                    "server_id": "server-1",
+                    "server_code": "recorder/one",
+                    "server_name": "Recorder One",
+                    "status": "DRAINING",
+                    "recorder_node_id": "node-1",
+                    "zlm_server_id": "zlm-1",
+                    "max_recordings": 10,
+                    "max_bindings": 20,
+                    "occupied_bindings": 1,
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.method} {path}")
+
+    with MediaFleetClient(
+        base_url=BASE_URL,
+        api_key=API_KEY,
+        retry=RetryPolicy(max_attempts=3, backoff_factor=0),
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        created = client.tasks.create(
+            TaskCreate(
+                school_code="SCHOOL",
+                task_type="video.cover.extract",
+                callback_url="https://callback.example.invalid/result",
+                params={"video_url": "https://media.example.invalid/video.mp4"},
+            ),
+            idempotency_key="task-create-001",
+        )
+        assert client.tasks.retry("task/failed").task.status == "pending"
+        assert client.tasks.retry_callback("task/failed").callback_result["success"]
+        assert client.bindings.create(
+            BindingCreate(
+                school_code="10001",
+                resource_type="CAMERA",
+                stream_id="stream-1",
+                app="live",
+            )
+        ).server_id == "zlm-1"
+        client.bindings.release("binding/one")
+        assert client.recordings.start(
+            RecordingStart(stream_id="stream-1", task_id="recording-1")
+        ).command == "record.start"
+        assert client.recordings.stop("recording-1").command == "record.stop"
+        assert (
+            client.recording_servers.update_status("recorder/one", "DRAINING").status
+            == "DRAINING"
+        )
+
+    assert created.created is True
+    assert requests[0].headers["Idempotency-Key"] == "task-create-001"
+    assert json.loads(requests[0].content)["task_type"] == "video.cover.extract"
+    assert requests[1].url.raw_path.endswith(b"task%2Ffailed/retry")
+    assert requests[4].url.raw_path.endswith(b"binding%2Fone")
+    assert requests[-1].url.raw_path.endswith(b"recorder%2Fone/status")
+    assert json.loads(requests[-1].content) == {"status": "DRAINING"}
+
+
+def test_write_request_models_reject_unknown_fields_and_short_idempotency_key() -> None:
+    with pytest.raises(ValueError):
+        TaskCreate.model_validate(
+            {
+                "school_code": "SCHOOL",
+                "task_type": "video.cover.extract",
+                "callback_url": "https://callback.example.invalid/result",
+                "routing_key": "forbidden",
+            }
+        )
+    with MediaFleetClient(
+        base_url=BASE_URL,
+        api_key=API_KEY,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"task_id": "x", "created": True})
+        ),
+    ) as client:
+        with pytest.raises(ValueError, match="8 到 128"):
+            client.tasks.create(
+                TaskCreate(
+                    school_code="SCHOOL",
+                    task_type="video.cover.extract",
+                    callback_url="https://callback.example.invalid/result",
+                ),
+                idempotency_key="short",
+            )
 
 
 def _task_summary(**extra: Any) -> dict[str, Any]:

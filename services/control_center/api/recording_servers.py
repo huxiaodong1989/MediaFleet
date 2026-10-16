@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from services.control_center.api.dependencies import (
     get_recording_server_service,
+    get_authenticated_principal,
     verify_internal_api_key,
 )
+from services.control_center.application.api_security_service import AuthenticatedPrincipal
 from services.control_center.api.schemas import (
     RecordingServerResponse,
     RecordingServerStatusUpdateRequest,
@@ -69,13 +71,14 @@ def list_recording_servers(
 def update_recording_server_status(
     server_code: str,
     request: RecordingServerStatusUpdateRequest,
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     service: RecordingServerService = Depends(get_recording_server_service),
 ) -> RecordingServerResponse:
     try:
         view = service.update_status(
             server_code=server_code,
             status=RecordingServerStatus(request.status),
-            updated_by=request.updated_by,
+            updated_by=principal.caller_id,
         )
     except RecordingServerNotFoundError as exc:
         raise HTTPException(
