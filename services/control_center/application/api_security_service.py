@@ -44,6 +44,10 @@ class CredentialOperationError(Exception):
     """凭据创建、轮换或吊销请求不合法。"""
 
 
+class CredentialConfigurationError(Exception):
+    """凭据启动配置会导致管理入口不可用。"""
+
+
 @dataclass(frozen=True)
 class AuthenticatedPrincipal:
     caller_id: str
@@ -146,15 +150,54 @@ def _database_datetime(value: datetime | None) -> datetime | None:
 
 
 class ApiCredentialService:
-    def __init__(self, session_factory, *, bootstrap_api_key: str) -> None:
+    def __init__(
+        self,
+        session_factory,
+        *,
+        bootstrap_api_key: str,
+        bootstrap_enabled: bool = True,
+    ) -> None:
         self._session_factory = session_factory
         self._bootstrap_api_key = str(bootstrap_api_key or "")
+        self._bootstrap_enabled = bootstrap_enabled
+
+    def validate_startup_configuration(self) -> None:
+        """关闭引导密钥前确认至少保留一个有效管理凭据。"""
+        if self._bootstrap_enabled or self.has_active_admin_credential():
+            return
+        raise CredentialConfigurationError(
+            "共享引导 API Key 已关闭，但数据库中没有有效的 admin:write 管理凭据"
+        )
+
+    def has_active_admin_credential(self) -> bool:
+        now = app_now()
+        with self._session_factory() as session:
+            rows = session.execute(
+                select(ApiCredentialModel.scopes, ApiCredentialModel.expires_at)
+                .join(
+                    ApiPrincipalModel,
+                    ApiPrincipalModel.id == ApiCredentialModel.principal_id,
+                )
+                .where(
+                    ApiCredentialModel.status == "ACTIVE",
+                    ApiPrincipalModel.status == "ACTIVE",
+                )
+            ).all()
+        return any(
+            (expires_at is None or expires_at > now)
+            and bool({ADMIN_WRITE, "*"} & set(scopes or []))
+            for scopes, expires_at in rows
+        )
 
     def authenticate(self, api_key: str | None) -> AuthenticatedPrincipal:
         candidate = str(api_key or "")
         if not candidate:
             raise AuthenticationFailed("缺少 API Key")
-        if self._bootstrap_api_key and compare_digest(candidate, self._bootstrap_api_key):
+        if (
+            self._bootstrap_enabled
+            and self._bootstrap_api_key
+            and compare_digest(candidate, self._bootstrap_api_key)
+        ):
             return AuthenticatedPrincipal(
                 caller_id="bootstrap",
                 display_name="部署引导凭据",
@@ -462,6 +505,7 @@ __all__ = [
     "AuthenticationFailed",
     "AuthenticatedPrincipal",
     "ApiCredentialService",
+    "CredentialConfigurationError",
     "CredentialOperationError",
     "CredentialView",
     "IssuedCredential",

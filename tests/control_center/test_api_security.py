@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from types import SimpleNamespace
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
+import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 
+from media_platform.common.time import app_now
 from media_platform.infrastructure.database.base import Base
 from media_platform.infrastructure.database.models import (
     ApiAuditEventModel,
     ApiCredentialModel,
+    ApiPrincipalModel,
 )
 from services.control_center.api.dependencies import verify_internal_api_key
 from services.control_center.api.security_admin import router as security_router
 from services.control_center.application.api_security_service import (
     ADMIN_WRITE,
+    AuthenticationFailed,
     ApiCredentialService,
+    CredentialConfigurationError,
     READ,
     RECORDING_WRITE,
     RequestAuditService,
@@ -108,6 +114,95 @@ def _create_key(client: TestClient, *, scopes: list[str]) -> dict:
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def test_bootstrap_key_is_enabled_by_default(tmp_path):
+    engine, factory, _ = _app(tmp_path)
+    try:
+        service = ApiCredentialService(factory, bootstrap_api_key=BOOTSTRAP_KEY)
+
+        service.validate_startup_configuration()
+        principal = service.authenticate(BOOTSTRAP_KEY)
+
+        assert principal.bootstrap is True
+        assert principal.scopes == frozenset({"*"})
+    finally:
+        engine.dispose()
+
+
+def test_disabled_bootstrap_key_requires_active_admin_credential(tmp_path):
+    engine, factory, _ = _app(tmp_path)
+    try:
+        service = ApiCredentialService(
+            factory,
+            bootstrap_api_key=BOOTSTRAP_KEY,
+            bootstrap_enabled=False,
+        )
+
+        with pytest.raises(CredentialConfigurationError, match="admin:write"):
+            service.validate_startup_configuration()
+        with pytest.raises(AuthenticationFailed, match="API Key 无效"):
+            service.authenticate(BOOTSTRAP_KEY)
+    finally:
+        engine.dispose()
+
+
+def test_scoped_admin_key_remains_available_when_bootstrap_is_disabled(tmp_path):
+    engine, factory, app = _app(tmp_path)
+    try:
+        with TestClient(app) as client:
+            created = _create_key(client, scopes=[ADMIN_WRITE])
+        service = ApiCredentialService(
+            factory,
+            bootstrap_api_key=BOOTSTRAP_KEY,
+            bootstrap_enabled=False,
+        )
+
+        service.validate_startup_configuration()
+        principal = service.authenticate(created["api_key"])
+
+        assert principal.bootstrap is False
+        assert principal.caller_id == "ci.automation"
+        assert principal.scopes == frozenset({ADMIN_WRITE})
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "invalid_state",
+    ["read_only", "expired", "credential_revoked", "principal_disabled"],
+)
+def test_disabled_bootstrap_rejects_unusable_admin_credentials(
+    tmp_path,
+    invalid_state: str,
+):
+    engine, factory, app = _app(tmp_path)
+    try:
+        scopes = [READ] if invalid_state == "read_only" else [ADMIN_WRITE]
+        with TestClient(app) as client:
+            created = _create_key(client, scopes=scopes)
+        with factory() as session:
+            credential = session.get(ApiCredentialModel, created["credential_id"])
+            assert credential is not None
+            if invalid_state == "expired":
+                credential.expires_at = app_now() - timedelta(seconds=1)
+            elif invalid_state == "credential_revoked":
+                credential.status = "REVOKED"
+            elif invalid_state == "principal_disabled":
+                principal = session.get(ApiPrincipalModel, credential.principal_id)
+                assert principal is not None
+                principal.status = "DISABLED"
+            session.commit()
+        service = ApiCredentialService(
+            factory,
+            bootstrap_api_key=BOOTSTRAP_KEY,
+            bootstrap_enabled=False,
+        )
+
+        with pytest.raises(CredentialConfigurationError, match="admin:write"):
+            service.validate_startup_configuration()
+    finally:
+        engine.dispose()
 
 
 def test_scoped_key_allows_read_and_rejects_write(tmp_path):

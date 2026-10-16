@@ -106,6 +106,8 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   1 MiB 并拒绝额外字段。重试、释放、停止录制和状态变更必须显式传入 `--yes`。
 - 通用任务创建、任务重试、流绑定释放和录制服务器状态更新改用认证 principal 作为可信
   创建人或更新人；最小权限映射覆盖 `task:write`、`recording:write` 和 `admin:write`。
+- 控制中心新增 `CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED` 类型化开关；关闭共享引导密钥前
+  必须在 MySQL 中存在有效的 `admin:write` 管理凭据，否则拒绝启动，避免管理入口锁死。
 
 ## 验证
 
@@ -207,6 +209,10 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   JSON 输入限制和显式确认。
 - 本轮完成后的根仓库全量验证为 `689 passed, 3 skipped`；根包、SDK、CLI 和 MCP 的
   sdist/Wheel 构建、Compileall、Ruff、`uv lock --check` 和 `git diff --check` 均通过。
+- 共享引导密钥开关与配置专项验证为 `26 passed`，覆盖默认兼容、关闭后拒绝共享密钥、有效
+  管理凭据放行，以及只读、过期、吊销和调用方停用等防锁死场景。
+- 本轮最新全量验证为 `698 passed, 3 skipped`；根包、SDK、CLI 和 MCP 的 sdist/Wheel 构建、
+  17 份 Compose 配置、Compileall、Ruff、`uv lock --check` 和 `git diff --check` 均通过。
 
 ## 剩余风险
 
@@ -224,8 +230,8 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
 - 部分旧兼容 API 和模型尚未迁移到统一的新应用服务。
 - 容器仍以 root 用户运行，尚未增加只读文件系统、Linux capability 限制和镜像安全扫描。
 - 回调、下载和流媒体 URL 尚未建立按用途配置的主机或 CIDR 允许列表。
-- 共享 `API_KEY` 仍具有迁移期引导权限；正式部署范围化凭据并迁移节点后，需要增加关闭引导
-  凭据的配置开关，避免长期保留全权限共享秘密。
+- 共享引导 `API_KEY` 为兼容升级默认启用；部门部署必须先给管理方和全部节点签发、验证最小
+  权限凭据，再主动关闭。节点迁移完成前关闭会导致心跳和内部调用认证失败。
 - 当前仓库已公开，公开历史仍需持续执行 Secret Scan；分支保护和 required checks 需要在
   GitHub 仓库规则中确认已应用到 `main`。
 - 图像分析尚未在部门真实录像、对象存储和视觉模型上完成容量及故障恢复验收，接单与消费

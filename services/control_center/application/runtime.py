@@ -271,7 +271,9 @@ def build_control_center_runtime() -> ControlCenterRuntime:
     credential_service = ApiCredentialService(
         SessionLocal,
         bootstrap_api_key=settings.API_KEY,
+        bootstrap_enabled=settings.CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED,
     )
+    credential_service.validate_startup_configuration()
     audit_service = RequestAuditService(SessionLocal)
 
     rabbitmq = settings.rabbitmq
