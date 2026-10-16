@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from enum import Enum
-from threading import Lock
+from threading import Condition, Lock
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -88,6 +88,22 @@ class InstanceConcurrency:
         self._limits = settings.stage_limits()
         self._active = dict.fromkeys(self._limits, 0)
         self._lock = Lock()
+        self._condition = Condition(self._lock)
+
+    @contextmanager
+    def slot(self, stage: ConcurrencyStage) -> Iterator[bool]:
+        """等待执行槽位，避免额度满时重复发布延迟重试消息。"""
+        stage = ConcurrencyStage(stage)
+        with self._condition:
+            while self._active[stage] >= self._limits[stage]:
+                self._condition.wait()
+            self._active[stage] += 1
+        try:
+            yield True
+        finally:
+            with self._condition:
+                self._active[stage] -= 1
+                self._condition.notify_all()
 
     @contextmanager
     def try_slot(self, stage: ConcurrencyStage) -> Iterator[bool]:
@@ -100,8 +116,9 @@ class InstanceConcurrency:
             yield acquired
         finally:
             if acquired:
-                with self._lock:
+                with self._condition:
                     self._active[stage] -= 1
+                    self._condition.notify_all()
 
     def snapshot(self) -> dict[str, dict[str, int]]:
         """本机观测快照，后续可供心跳使用；不能作为DB任务状态。"""
@@ -110,3 +127,11 @@ class InstanceConcurrency:
                 stage.value: {"limit": limit, "active": self._active[stage]}
                 for stage, limit in self._limits.items()
             }
+
+    def update_limits(self, content: dict) -> None:
+        from media_platform.contracts.runtime_config import ImagePerformanceConfig
+
+        values = ImagePerformanceConfig.model_validate(content).model_dump(exclude={"schema_version"})
+        limits = ImageConcurrencySettings(**values).stage_limits()
+        with self._lock:
+            self._limits = limits  # 活动计数保留；降低额度后等待旧调用释放。

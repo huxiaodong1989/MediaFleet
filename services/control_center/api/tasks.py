@@ -16,6 +16,7 @@ from media_platform.contracts.content_evaluation import (
     ClassEvaluationCreateResponse,
     ClassEvaluationRecordResponse,
     ClassEvaluationRequest,
+    ClassEvaluationTaskRequest,
 )
 from media_platform.contracts.image_analysis import ImageAnalysisRequest
 from media_platform.contracts.task import TaskDeliveryChannel
@@ -93,28 +94,39 @@ def _evaluation_idempotency_key(school_code: str, business_task_id: str) -> str:
     summary="创建AI评课任务",
 )
 def create_class_evaluation(
-    request: ClassEvaluationRequest,
+    request: ClassEvaluationTaskRequest | ClassEvaluationRequest,
     service: TaskDispatchService = Depends(get_task_dispatch_service),
     admin_service: AdminService = Depends(get_admin_service),
 ) -> ClassEvaluationCreateResponse:
+    if isinstance(request, ClassEvaluationTaskRequest):
+        evaluation_request = request.task_data
+        priority = request.priority
+        quest_type = request.quest_type if request.quest_type is not None else evaluation_request.quest_type
+        if request.quest_type is not None and evaluation_request.quest_type is None:
+            evaluation_request = evaluation_request.model_copy(update={"quest_type": request.quest_type})
+    else:
+        evaluation_request = request
+        priority = 0
+        quest_type = request.quest_type
     result = service.create_task(
         CreateTaskCommand(
-            school_code=request.school_code,
+            school_code=evaluation_request.school_code,
             task_type="content.class_evaluation",
             delivery_channel=TaskDeliveryChannel.CONTENT_ANALYSIS,
-            business_task_id=request.task_id,
+            business_task_id=evaluation_request.task_id,
             routing_key="content.class_evaluation",
-            params=request.model_dump(mode="json", by_alias=True, exclude_none=True),
+            params=evaluation_request.model_dump(mode="json", by_alias=True, exclude_none=True),
             idempotency_key=_evaluation_idempotency_key(
-                request.school_code,
-                request.task_id,
+                evaluation_request.school_code,
+                evaluation_request.task_id,
             ),
+            priority=priority,
             max_retries=3,
-            callback_url=(str(request.callback_url) if request.callback_url else None),
+            callback_url=(str(evaluation_request.callback_url) if evaluation_request.callback_url else None),
             created_by="class-evaluation-api",
         )
     )
-    if not result.created and request.quest_type == 1:
+    if not result.created and quest_type == 1:
         try:
             admin_service.retry_task(
                 result.task_id,
@@ -126,9 +138,9 @@ def create_class_evaluation(
                 detail=str(exc),
             ) from exc
     return ClassEvaluationCreateResponse(
-        taskId=request.task_id,
+        taskId=evaluation_request.task_id,
         internalTaskId=result.task_id,
-        status="PENDING" if result.created or request.quest_type == 1 else "EXISTS",
+        status="PENDING" if result.created or quest_type == 1 else "EXISTS",
         message="评课任务已创建" if result.created else "评课任务已存在",
         created=result.created,
     )

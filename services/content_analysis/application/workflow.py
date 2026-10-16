@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import copy
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -12,6 +13,7 @@ from time import perf_counter
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
+from media_platform.application.analysis_config import locked_content_prompt, validate_models
 
 from media_platform.contracts.content_evaluation import (
     ClassEvaluationRequest,
@@ -64,6 +66,8 @@ class ClassEvaluationWorkflow:
         llm_client: EvaluationLlmClient,
         progress_callback: ProgressCallbackClient,
         llm_max_retries: int = 3,
+        config_reader=None,
+        client_factory=None,
     ) -> None:
         self.session_factory = session_factory
         self.subtitle_client = subtitle_client
@@ -72,6 +76,9 @@ class ClassEvaluationWorkflow:
         self.llm_client = llm_client
         self.progress_callback = progress_callback
         self.llm_max_retries = llm_max_retries
+        self.config_reader = config_reader
+        self.client_factory = client_factory
+        self.connection_version = None
 
     @staticmethod
     def _digest(value: Any) -> str:
@@ -203,8 +210,22 @@ class ClassEvaluationWorkflow:
         raise RuntimeError(f"步骤 {step.code} 模型调用失败") from last_error
 
     async def execute(self, message: TaskDispatchMessage, execution_generation: int, lease_lost: Event) -> EvaluationOutcome:
+        if self.config_reader is None and self.client_factory is None:
+            return await self._execute(message, execution_generation, lease_lost)
+        task = copy(self)
+        params = self.config_reader.task_params(message.task_id, execution_generation) if self.config_reader else message.params
+        snapshot = self.config_reader.connection(params) if self.config_reader else None
+        task.connection_version = snapshot.id if snapshot else None
+        task.llm_client = self.client_factory(snapshot)
+        task.connection = snapshot
+        try:
+            return await task._execute(message.model_copy(update={"params": params}), execution_generation, lease_lost)
+        finally:
+            await task.llm_client.close()
+
+    async def _execute(self, message: TaskDispatchMessage, execution_generation: int, lease_lost: Event) -> EvaluationOutcome:
         workflow_started_at = perf_counter()
-        request = ClassEvaluationRequest.model_validate(message.params)
+        request = ClassEvaluationRequest.model_validate({k: v for k, v in message.params.items() if k not in {"_runtimeConfig", "_promptBundle"}})
         business_task_id = message.business_task_id or request.task_id
         LOGGER.info(
             "AI评课工作流初始化: task_id=%s, business_task_id=%s, classroom_id=%s, "
@@ -220,10 +241,14 @@ class ClassEvaluationWorkflow:
         self._check_lease(lease_lost)
 
         with self.session_factory() as session:
-            prompt_row = PromptBundleRepository(session).get_published(message.school_code)
+            reference = message.params.get("_promptBundle")
+            prompt_row = (locked_content_prompt(session, reference, message.school_code) if reference
+                          else PromptBundleRepository(session).get_published(message.school_code))
             if prompt_row is None:
                 raise RuntimeError("没有已发布的评课提示词版本")
             prompt_bundle = PromptBundleContent.model_validate(prompt_row.content)
+            if getattr(self, "connection", None):
+                validate_models("content-analysis", prompt_row.content, self.connection.content)
             prompt_bundle_id = prompt_row.id
             prompt_version = prompt_row.version
 
@@ -311,7 +336,8 @@ class ClassEvaluationWorkflow:
             step_started_at = perf_counter()
             self._check_lease(lease_lost)
             resolved_prompt = self._resolve_prompt(step, request.metadata)
-            step_input_digest = self._digest({"materials": material_digest, "prompt": resolved_prompt, "user": step.user_prompt, "model": step.model})
+            step_input_digest = self._digest({"materials": material_digest, "prompt": resolved_prompt, "user": step.user_prompt, "model": step.model,
+                                            "connection_version": self.connection_version, "temperature": step.temperature, "max_tokens": step.max_tokens})
             with self.session_factory() as session:
                 reusable = ContentEvaluationRepository(session).find_reusable_step(
                     task_id=message.task_id,

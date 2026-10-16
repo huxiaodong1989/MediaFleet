@@ -91,7 +91,7 @@ def test_image_heartbeat_reports_connection_and_all_stage_limits(monkeypatch):
         ffmpeg_threads=1,
     )
     concurrency = InstanceConcurrency(settings)
-    consumer = SimpleNamespace(_connection=SimpleNamespace(is_closed=False))
+    consumer = SimpleNamespace(_connection=SimpleNamespace(is_closed=False), config=SimpleNamespace(prefetch_count=64))
     monkeypatch.setenv("MEDIA_NODE_NAME", "图像分析节点01")
     monkeypatch.setenv("MEDIA_NODE_WEIGHT", "80")
     monkeypatch.setenv(

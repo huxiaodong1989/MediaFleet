@@ -118,13 +118,16 @@ class ImagePromptReader:
         self.session_factory = session_factory
         self.policy = policy
 
-    def _snapshot(self, row) -> ImagePromptSnapshot:
+    def _snapshot(self, row, session=None, *, historical=False) -> ImagePromptSnapshot:
         if row.status not in {"PUBLISHED", "ARCHIVED"} or row.published_at is None:
             raise ValueError("提示词版本未发布过")
         if prompt_content_hash(row.content) != row.content_hash:
             raise ValueError("提示词内容摘要不匹配")
         content = ImagePromptBundleContent.model_validate(row.content)
-        self.policy.validate(content)
+        if session is not None and hasattr(self.policy, "validate_in_session"):
+            self.policy.validate_in_session(content, session, historical=historical)
+        else:
+            self.policy.validate(content)
         return ImagePromptSnapshot(
             row.id, row.school_code, row.version, row.content_hash, content
         )
@@ -142,7 +145,7 @@ class ImagePromptReader:
             row = repository.get_published(candidate)
             if row is not None:
                 # 有发布版本但内容坏了必须失败，不能切 GLOBAL 或本地种子。
-                return self._snapshot(row)
+                return self._snapshot(row, session)
             if repository.list_versions():
                 # 学校已显式建立方案但未发布，不使用 GLOBAL 遮盖配置错误。
                 raise LookupError("图像提示词方案存在但没有发布版本")
@@ -161,7 +164,7 @@ class ImagePromptReader:
             for candidate in dict.fromkeys((school_code, GLOBAL_SCHOOL_CODE)):
                 row = _repository(session, candidate).get(bundle_id)
                 if row is not None:
-                    snapshot = self._snapshot(row)
+                    snapshot = self._snapshot(row, session, historical=True)
                     if (
                         snapshot.version != expected_version
                         or snapshot.content_hash != expected_hash
@@ -217,6 +220,8 @@ class ImagePromptManagementService:
 
     def _write(self, school_code: str, operation) -> PromptBundleView:
         def execute(session):
+            if hasattr(self.policy, "prepare_session"):
+                self.policy.prepare_session(session)
             return PromptManagementService._view(
                 operation(_repository(session, school_code))
             )

@@ -7,12 +7,16 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 import logging
 import os
+from media_platform.infrastructure.runtime_config import RuntimeConfigStore
+from media_platform.application.runtime_config import RuntimeConfigRefresher
+from media_platform.application.analysis_config import (
+    AnalysisConfigReader, DatabaseImagePromptPolicy, initialize_analysis_config,
+)
 import socket
 from threading import Event, Thread
 
 from media_platform.application import NodeHeartbeatReporter, NodeHeartbeatReporterConfig
 from media_platform.application.image_prompt_service import (
-    ImagePromptPolicy,
     ImagePromptReader,
     ensure_image_prompt_bootstrap,
 )
@@ -25,7 +29,6 @@ from media_platform.contracts.topology import (
 from media_platform.contracts.image_analysis import IMAGE_TASK_TYPE
 from media_platform.infrastructure.messaging import (
     RabbitMQConsumerConfig,
-    TaskBusyError,
 )
 from services.image_analysis.application.classroom_pipeline import (
     ClassroomImagePipeline,
@@ -70,6 +73,15 @@ def _positive_float(name: str, default: float) -> float:
     value = float(os.getenv(name, str(default)))
     if value <= 0:
         raise ValueError(f"{name} must be positive")
+    return value
+
+
+def _optional_consumer_timeout_milliseconds() -> int | None:
+    value = int(os.getenv("IMAGE_ANALYSIS_CONSUMER_TIMEOUT_MS", "0"))
+    if value == 0:
+        return None
+    if value < 1_000:
+        raise ValueError("IMAGE_ANALYSIS_CONSUMER_TIMEOUT_MS must be 0 or at least 1000")
     return value
 
 
@@ -123,6 +135,7 @@ class ImageAnalysisRuntime:
     concurrency: InstanceConcurrency
     worker_id: str
     heartbeat_reporter: NodeHeartbeatReporter | None = None
+    config_refresher: RuntimeConfigRefresher | None = None
     reconnect_delay_seconds: int = 5
     notification_interval_seconds: int = 2
     _stop: Event = field(default_factory=Event, init=False, repr=False)
@@ -150,6 +163,8 @@ class ImageAnalysisRuntime:
 
     async def start(self) -> None:
         self._stop.clear()
+        if self.config_refresher:
+            self.config_refresher.start()
         self._threads = [
             Thread(target=self._consume, name="image-task-consumer", daemon=True),
             Thread(target=self._deliver, name="image-result-delivery", daemon=True),
@@ -161,6 +176,8 @@ class ImageAnalysisRuntime:
 
     async def close(self) -> None:
         self._stop.set()
+        if self.config_refresher:
+            self.config_refresher.close()
         self.consumer.stop()
         for thread in self._threads:
             if thread.is_alive():
@@ -183,6 +200,7 @@ def _build_image_analysis_heartbeat_reporter(
     concurrency: InstanceConcurrency,
     settings: ImageConcurrencySettings,
     api_key: str,
+    config_refresher=None,
 ) -> NodeHeartbeatReporter:
     """创建图像分析节点心跳，上报真实消费连接和实例内阶段容量。"""
 
@@ -198,11 +216,13 @@ def _build_image_analysis_heartbeat_reporter(
             "weight": int(os.getenv("MEDIA_NODE_WEIGHT", "100")),
             "capabilities": [IMAGE_TASK_TYPE],
             "capacity": {
-                "worker_prefetch": settings.consumer_prefetch,
+                "worker_prefetch": consumer.config.prefetch_count,
                 "consumer_enabled": True,
                 "processing_tasks": classroom["active"],
                 "max_concurrent_classrooms": classroom["limit"],
                 "stages": stages,
+                "runtime_config": config_refresher.status() if config_refresher else {},
+                "runtime_config_supported": True,
             },
             "readiness": "READY" if ready else "NOT_READY",
             "readiness_details": {"consumer_ready": ready},
@@ -239,30 +259,41 @@ def build_image_analysis_runtime(
     init_database(platform)
     settings = settings or ImageConcurrencySettings.from_env()
     concurrency = InstanceConcurrency(settings)
+    config_store = RuntimeConfigStore(SessionLocal)
+    config_reader = AnalysisConfigReader(config_store, "image-analysis")
+    configured_connection = config_store.snapshot("image-analysis", "model_connection")
     worker_id = (
         os.getenv("IMAGE_ANALYSIS_INSTANCE_ID", "").strip()
         or f"{socket.gethostname()}-{os.getpid()}"
     )
-    model = _required("IMAGE_ANALYSIS_DEFAULT_MODEL")
+    model = os.getenv("IMAGE_ANALYSIS_DEFAULT_MODEL", "").strip() or (configured_connection.content["allowed_models"][0] if configured_connection else "")
     allowed = frozenset(
         filter(
             None,
             (
                 item.strip()
-                for item in _required("IMAGE_ANALYSIS_ALLOWED_MODELS").split(",")
+                for item in os.getenv("IMAGE_ANALYSIS_ALLOWED_MODELS", "").split(",")
             ),
         )
     )
-    policy = ImagePromptPolicy(
-        allowed_models=allowed,
-        output_schema_versions=frozenset({"image-metrics.v1"}),
-        metric_definition_versions=frozenset({"classroom-behavior.v1"}),
-    )
+    policy = DatabaseImagePromptPolicy(config_store, allowed)
     ensure_image_prompt_bootstrap(
         SessionLocal, lambda: load_bootstrap_prompt_bundle(model), policy
     )
     reader = ImagePromptReader(SessionLocal, policy)
     reader.published("GLOBAL")
+    connection = (configured_connection.content if configured_connection else {
+        "base_url": _required("IMAGE_ANALYSIS_OPENAI_BASE_URL"), "allowed_models": sorted(allowed),
+        "timeout_seconds": 120,
+    })
+    model_key = configured_connection.api_key if configured_connection else _required("IMAGE_ANALYSIS_OPENAI_API_KEY")
+    initialize_analysis_config(config_store, "image-analysis", connection,
+                               settings.model_dump(exclude={"ffmpeg_threads"}), model_key)
+
+    def model_factory(snapshot):
+        return StageLimitedResource(VisionModelClient(
+            api_key=snapshot.api_key, base_url=snapshot.content["base_url"],
+            timeout_seconds=snapshot.content["timeout_seconds"]), concurrency)
     source = HttpVideoSource(
         allowed_hosts=tuple(
             filter(
@@ -306,8 +337,9 @@ def build_image_analysis_runtime(
         store,
         StageLimitedResource(
             VisionModelClient(
-                api_key=_required("IMAGE_ANALYSIS_OPENAI_API_KEY"),
-                base_url=_required("IMAGE_ANALYSIS_OPENAI_BASE_URL"),
+                api_key=model_key,
+                base_url=connection["base_url"],
+                timeout_seconds=connection["timeout_seconds"],
             ),
             concurrency,
         ),
@@ -321,6 +353,8 @@ def build_image_analysis_runtime(
         source,
         probe,
         worker_id=worker_id,
+        config_reader=config_reader,
+        model_factory=model_factory,
         selection_policy=SourceSelectionPolicy(
             version="duration-heuristic.v1",
             minimum_classroom_coverage=0.5,
@@ -340,9 +374,7 @@ def build_image_analysis_runtime(
     )
 
     def limited_handle(message) -> None:
-        with concurrency.try_slot(ConcurrencyStage.CLASSROOM) as admitted:
-            if not admitted:
-                raise TaskBusyError("图像课堂并发额度已满")
+        with concurrency.slot(ConcurrencyStage.CLASSROOM):
             handler.handle(message)
 
     rabbit = platform.rabbitmq
@@ -361,6 +393,7 @@ def build_image_analysis_runtime(
             queue_name=IMAGE_ANALYSIS_TASK_QUEUE,
             routing_keys=("image.#",),
             prefetch_count=settings.consumer_prefetch,
+            consumer_timeout_milliseconds=_optional_consumer_timeout_milliseconds(),
         ),
         limited_handle,
     )
@@ -380,12 +413,22 @@ def build_image_analysis_runtime(
         )
     )
     delivery = ImageNotificationDelivery(SessionLocal, publisher, instance_id=worker_id)
+
+    def apply_performance(snapshot):
+        concurrency.update_limits(snapshot.content)
+        consumer.update_prefetch(snapshot.content["max_concurrent_classrooms"])
+
+    refresher = RuntimeConfigRefresher(config_store, "image-analysis", {
+        "model_connection": lambda snapshot: None,
+        "performance": apply_performance,
+    })
     heartbeat = _build_image_analysis_heartbeat_reporter(
         worker_id=worker_id,
         consumer=consumer,
         concurrency=concurrency,
         settings=settings,
         api_key=getattr(platform, "API_KEY", ""),
+        config_refresher=refresher,
     )
     return ImageAnalysisRuntime(
         consumer=consumer,
@@ -394,6 +437,7 @@ def build_image_analysis_runtime(
         concurrency=concurrency,
         worker_id=worker_id,
         heartbeat_reporter=heartbeat,
+        config_refresher=refresher,
     )
 
 

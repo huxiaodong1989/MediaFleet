@@ -15,6 +15,8 @@ services:
       SERVICE_LOG_LEVEL: ${CONTROL_CENTER_LOG_LEVEL:-INFO}
       # RTC、节点心跳和管理接口使用的内部认证密钥，各服务必须保持一致。
       API_KEY: ${CONTROL_CENTER_API_KEY:-change-this-api-key}
+      CONFIG_ADMIN_API_KEY: ${CONFIG_ADMIN_API_KEY:-}
+      RUNTIME_CONFIG_ENCRYPTION_KEY: ${RUNTIME_CONFIG_ENCRYPTION_KEY:-}
       APP_ENV: ${APP_ENV:-production}
       TZ: ${TZ:-Asia/Shanghai}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}

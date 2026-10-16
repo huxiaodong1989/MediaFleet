@@ -208,3 +208,32 @@ def test_class_evaluation_accepts_legacy_tenant_payload(tmp_path):
             assert task.params["maxTextChunkSize"] == 0
     finally:
         engine.dispose()
+
+
+def test_class_evaluation_accepts_wrapped_task_data(tmp_path):
+    engine = sa.create_engine(f"sqlite:///{(tmp_path / 'evaluation-wrapped.db').as_posix()}")
+    _create_tables(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app = create_control_center_app(lambda: FakeRuntime(factory))
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/tasks/class-evaluation",
+                json={
+                    "taskData": _payload(schoolCode=None, tenant_id=88888),
+                    "priority": 1,
+                    "timeoutSeconds": 1800,
+                    "callbackUrl": "https://example.invalid/outer/callback",
+                    "metadata": {"createdBy": "legacy-client"},
+                },
+                headers={"X-API-Key": "test-api-key"},
+            )
+        assert response.status_code == 200
+        with factory() as session:
+            task = session.get(MediaTaskModel, response.json()["internalTaskId"])
+            assert task.school_code == "88888"
+            assert task.priority == 1
+            assert task.callback_url == "https://example.invalid/evaluation/callback"
+            assert "metadata" not in task.params
+    finally:
+        engine.dispose()

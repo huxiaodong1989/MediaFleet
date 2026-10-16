@@ -122,6 +122,17 @@ def test_shared_worker_queue_uses_catch_all_binding_by_default():
     assert config.routing_keys == ("#",)
 
 
+def test_optional_consumer_timeout_is_declared_on_main_queue():
+    consumer = _consumer(lambda message: None)
+    consumer.config = _config(consumer_timeout_milliseconds=7_200_000)
+    consumer._declare_topology()
+    main_queue = next(
+        item for item in consumer._channel.queue_declarations
+        if item["queue"] == "media-worker.tasks"
+    )
+    assert main_queue["arguments"]["x-consumer-timeout"] == 7_200_000
+
+
 def test_acknowledges_only_after_handler_success():
     handled = []
     consumer = _consumer(handled.append)

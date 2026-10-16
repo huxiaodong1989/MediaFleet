@@ -157,13 +157,17 @@ class BehaviorAnalysisClient:
 
 
 class EvaluationLlmClient:
-    def __init__(self, *, api_key: str, base_url: str, timeout_seconds: float):
+    def __init__(self, *, api_key: str, base_url: str, timeout_seconds: float, limits=None):
         if not api_key.strip():
             raise ValueError("CONTENT_ANALYSIS_OPENAI_API_KEY 未配置")
         from openai import AsyncOpenAI
 
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout_seconds)
         self.timeout_seconds = timeout_seconds
+        self.limits = limits
+
+    async def close(self):
+        await self.client.close()
 
     @staticmethod
     def _extract_json(response_text: str) -> dict[str, Any]:
@@ -179,6 +183,17 @@ class EvaluationLlmClient:
         return value
 
     async def analyze(self, *, model: str, system_prompt: str, user_prompt: str, temperature: float, max_tokens: int) -> tuple[dict[str, Any], dict[str, int]]:
+        if self.limits is not None:
+            while True:
+                with self.limits.try_slot("model") as acquired:
+                    if acquired:
+                        return await self._analyze(model=model, system_prompt=system_prompt, user_prompt=user_prompt,
+                                                   temperature=temperature, max_tokens=max_tokens)
+                await asyncio.sleep(0.05)
+        return await self._analyze(model=model, system_prompt=system_prompt, user_prompt=user_prompt,
+                                   temperature=temperature, max_tokens=max_tokens)
+
+    async def _analyze(self, *, model: str, system_prompt: str, user_prompt: str, temperature: float, max_tokens: int) -> tuple[dict[str, Any], dict[str, int]]:
         response = await asyncio.wait_for(
             self.client.chat.completions.create(
                 model=model,
@@ -212,10 +227,11 @@ class ProgressCallbackClient:
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        callback_body = {"content": json.dumps(payload, ensure_ascii=False, allow_nan=False)}
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(callback_url, json=payload, headers=headers) as response:
+                async with session.post(callback_url, json=callback_body, headers=headers) as response:
                     return 200 <= response.status < 300
         except (aiohttp.ClientError, asyncio.TimeoutError):
             LOGGER.warning("评课进度回调失败: callback_url=%s", safe_url(callback_url), exc_info=True)

@@ -28,14 +28,16 @@ class ImageIntakeResult:
 
 
 class ImageAnalysisIntakeService:
-    def __init__(self, dispatch: TaskDispatchService, policy: ImagePromptPolicy):
+    def __init__(self, dispatch: TaskDispatchService, policy: ImagePromptPolicy, config_reader=None):
         self.dispatch = dispatch
         self.reader = ImagePromptReader(dispatch.session_factory, policy)
+        self.config_reader = config_reader
 
     def create(self, request: ImageAnalysisRequest) -> ImageIntakeResult:
         fingerprint = request.semantic_fingerprint()
 
         def prepare(session):
+            runtime_params = self.config_reader.prepare(session, request.school_id, {}) if self.config_reader else {}
             snapshot = self.reader.published_in_session(session, request.school_id)
             mentioned = set(re.findall(r"\b[A-Z][A-Z_]+\b", snapshot.content.prompt))
             missing = sorted(
@@ -46,6 +48,7 @@ class ImageAnalysisIntakeService:
             if missing:
                 raise ValueError("已发布图像提示词未覆盖请求指标: " + ",".join(missing))
             return {
+                **runtime_params,
                 "request": request.to_payload(),
                 "semanticFingerprint": fingerprint,
                 "promptBundle": {
