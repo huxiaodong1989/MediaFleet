@@ -52,6 +52,7 @@ services:
       SERVICE_DOTENV_ENABLED: "false"
       SERVICE_LOG_LEVEL: ${CONTROL_CENTER_LOG_LEVEL:-INFO}
       API_KEY: ${CONTROL_CENTER_API_KEY:-change-this-api-key}
+      CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED: ${CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED:-true}
       APP_ENV: ${APP_ENV:-production}
       TZ: ${TZ:-Asia/Shanghai}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}

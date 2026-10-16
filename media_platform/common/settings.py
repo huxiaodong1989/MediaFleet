@@ -821,6 +821,10 @@ class Settings(BaseSettings):
 
     # API密钥
     API_KEY: str = Field("", alias="API_KEY")
+    CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED: bool = Field(
+        True,
+        alias="CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED",
+    )
 
     # 节点类型
     node_type: Literal["master", "worker"] = Field("master", alias="NODE_TYPE")
@@ -1153,6 +1157,7 @@ def get_settings() -> Settings:
     for key, value in os.environ.items():
         if key.upper() in [
             "APP_NAME", "APP_VERSION", "APP_ENV", "NODE_TYPE", "API_KEY",
+            "CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED",
             "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME",
             "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DB",
             "ZLM_API_URL", "ZLM_SECRET", "STORAGE_TYPE",

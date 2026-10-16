@@ -56,6 +56,27 @@ def test_production_accepts_non_placeholder_api_key(monkeypatch) -> None:
     assert Settings().env == "production"
 
 
+def test_settings_parses_disabled_bootstrap_api_key(monkeypatch) -> None:
+    from media_platform.common.settings import Settings
+
+    monkeypatch.setenv("IGNORE_ENV_FILE", "1")
+    monkeypatch.setenv("CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED", "false")
+
+    assert Settings().CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED is False
+
+
+def test_settings_rejects_invalid_bootstrap_api_key_flag(monkeypatch) -> None:
+    from pydantic import ValidationError
+
+    from media_platform.common.settings import Settings
+
+    monkeypatch.setenv("IGNORE_ENV_FILE", "1")
+    monkeypatch.setenv("CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED", "sometimes")
+
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 def test_load_env_file_sets_missing_values_and_preserves_existing(
     tmp_path, monkeypatch
 ) -> None:
