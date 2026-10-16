@@ -68,6 +68,9 @@ def test_create_task_api_creates_task_and_manages_runtime(tmp_path):
             assert second.status_code == 200
             assert second.json()["created"] is True
             assert second.json()["task_id"] != first.json()["task_id"]
+            with runtime.task_service.session_factory() as session:
+                stored = session.get(MediaTaskModel, first.json()["task_id"])
+                assert stored.created_by == "bootstrap"
         assert runtime.closed is True
     finally:
         engine.dispose()
@@ -85,6 +88,28 @@ def test_create_task_api_accepts_minimal_payload_without_keys(tmp_path):
             )
             assert response.status_code == 200
             assert response.json()["created"] is True
+    finally:
+        engine.dispose()
+
+
+def test_create_task_api_uses_header_idempotency_key(tmp_path):
+    engine, runtime = _runtime(tmp_path)
+    app = create_control_center_app(lambda: runtime)
+    headers = {
+        "X-API-Key": runtime.api_key,
+        "Idempotency-Key": "stable-task-create",
+    }
+    try:
+        with TestClient(app) as client:
+            first = client.post("/api/v1/tasks", json=_payload(), headers=headers)
+            repeated = client.post("/api/v1/tasks", json=_payload(), headers=headers)
+
+        assert first.status_code == 200
+        assert repeated.status_code == 200
+        assert repeated.json() == {
+            "task_id": first.json()["task_id"],
+            "created": False,
+        }
     finally:
         engine.dispose()
 

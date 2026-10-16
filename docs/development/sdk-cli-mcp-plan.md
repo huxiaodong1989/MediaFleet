@@ -221,12 +221,12 @@ mediafleet auth logout
 - `--page`、`--page-size`；不默认拉取无限数据。
 - `--no-color`。
 
-### 5.3 第二阶段写命令
+### 5.3 第二阶段写命令（已实现）
 
 复杂请求优先支持 `--file request.json` 和标准输入，简单字段同时提供显式选项：
 
 ```text
-mediafleet task create --file task.json
+mediafleet task create --file task.json --idempotency-key STABLE_KEY
 mediafleet task retry TASK_ID --yes
 mediafleet task callback-retry TASK_ID --yes
 mediafleet binding create --file binding.json
@@ -234,10 +234,11 @@ mediafleet binding release BINDING_ID --yes
 mediafleet recording start --file recording.json
 mediafleet recording stop TASK_ID --yes
 mediafleet recorder set-status CODE STATUS --yes
-mediafleet image-analysis create --file request.json
 ```
 
-- 交互终端要求确认；CI 必须显式传 `--yes`。
+- 任务创建必须传稳定 `--idempotency-key`，同一次业务重试复用同一个值。
+- 变更既有状态的命令必须显式传 `--yes`。
+- `--file` 和 `--stdin` 必须二选一，JSON 最大 1 MiB，并拒绝未声明字段。
 - JSON 模式下错误也输出结构化对象，但写入 stderr。
 - CLI 不接收任意 RabbitMQ routing key、数据库语句、Shell 命令或环境变量名。
 
@@ -350,14 +351,16 @@ mediafleet_list_recording_servers
 
 审核点：完整功能开发结束后，决定是否先补权限模型，还是长期保留只读 MCP。
 
-### 阶段 D：身份、权限与受控写操作（基础层已实现）
+### 阶段 D：身份、权限与受控写操作（已实现当前范围）
 
 建议单独设计和单独 PR，不与前三阶段混合：
 
 - 已实现调用方身份、范围化凭据、过期、轮换和吊销。
 - 已实现写请求执行前审计和结果回写；审计不可用时拒绝写请求。
 - SDK 与 CLI 已提供凭据管理和审计查询。
-- 任务、录制和管理业务写资源继续按稳定幂等契约逐个开放。
+- SDK 与 CLI 已开放任务、绑定、录制和录制服务器状态写操作。
+- 写操作使用可信 principal 记录创建人或更新人，忽略请求体中的旧操作者字段。
+- JSON 输入有大小上限并使用严格类型模型，SDK 不自动重试写请求。
 - 经单独批准的 MCP 写工具。
 
 ## 8. PR 拆分建议

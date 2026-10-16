@@ -417,5 +417,7 @@ def test_stream_binding_api_releases_capacity_idempotently(tmp_path):
         with factory() as session:
             server = session.get(RecordingServerModel, "server-1")
             assert server.occupied_bindings == 0
+            binding = session.get(MediaStreamBindingModel, binding_id)
+            assert binding.updated_by == "bootstrap"
     finally:
         engine.dispose()

@@ -22,6 +22,7 @@ from mediafleet_sdk.resources import (
     AsyncBindingsResource,
     AsyncNodesResource,
     AsyncRecordingServersResource,
+    AsyncRecordingsResource,
     AsyncSecurityResource,
     AsyncSystemResource,
     AsyncTasksResource,
@@ -29,7 +30,7 @@ from mediafleet_sdk.resources import (
 
 
 class AsyncMediaFleetClient:
-    """通过控制中心 REST API 异步读取 MediaFleet 状态。"""
+    """通过控制中心 REST API 异步查询和管理 MediaFleet。"""
 
     def __init__(
         self,
@@ -63,6 +64,7 @@ class AsyncMediaFleetClient:
         self.nodes = AsyncNodesResource(self)
         self.bindings = AsyncBindingsResource(self)
         self.recording_servers = AsyncRecordingServersResource(self)
+        self.recordings = AsyncRecordingsResource(self)
         self.security = AsyncSecurityResource(self)
 
     @property

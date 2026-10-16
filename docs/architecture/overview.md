@@ -91,7 +91,7 @@ flowchart TB
         Client[业务客户端 / RTC]
         Ops[运维控制台]
         SDK[Python SDK]
-        CLI[只读 CLI]
+        CLI[查询与受控写 CLI]
         MCP[只读 MCP Server]
     end
 

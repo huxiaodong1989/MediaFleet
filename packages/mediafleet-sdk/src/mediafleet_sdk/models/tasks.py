@@ -4,7 +4,26 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import ConfigDict, Field
+
 from mediafleet_sdk.models.base import Page, SDKModel, UtcDateTime
+
+
+class TaskCreate(SDKModel):
+    model_config = ConfigDict(extra="forbid")
+
+    school_code: str = Field(min_length=1, max_length=64)
+    task_type: str = Field(min_length=1, max_length=64)
+    callback_url: str = Field(min_length=1, max_length=1000)
+    priority: int = Field(default=0, ge=0, le=255)
+    max_retries: int = Field(default=3, ge=1, le=100)
+    params: dict[str, Any] = Field(default_factory=dict)
+    target_node_id: str | None = Field(default=None, max_length=36)
+
+
+class TaskCreateResult(SDKModel):
+    task_id: str
+    created: bool
 
 
 class TaskSummary(SDKModel):
@@ -67,4 +86,23 @@ class TaskPage(Page[TaskSummary]):
     pass
 
 
-__all__ = ["TaskDetail", "TaskFile", "TaskPage", "TaskSummary"]
+class TaskRetryResult(SDKModel):
+    accepted: bool
+    task: TaskSummary
+
+
+class CallbackRetryResult(SDKModel):
+    accepted: bool
+    callback_result: dict[str, Any]
+
+
+__all__ = [
+    "CallbackRetryResult",
+    "TaskCreate",
+    "TaskCreateResult",
+    "TaskDetail",
+    "TaskFile",
+    "TaskPage",
+    "TaskRetryResult",
+    "TaskSummary",
+]

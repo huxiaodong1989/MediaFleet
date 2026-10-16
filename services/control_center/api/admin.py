@@ -29,8 +29,10 @@ from services.control_center.api.admin_schemas import (
 from services.control_center.api.dependencies import (
     get_admin_service,
     get_content_prompt_service,
+    get_authenticated_principal,
     verify_internal_api_key,
 )
+from services.control_center.application.api_security_service import AuthenticatedPrincipal
 from services.control_center.application.admin_service import (
     AdminOperationError,
     AdminService,
@@ -172,11 +174,11 @@ def list_admin_bindings_page(
 )
 def retry_admin_task(
     task_id: str,
-    updated_by: str = Query(default="admin-console", min_length=1, max_length=64),
+    principal: AuthenticatedPrincipal = Depends(get_authenticated_principal),
     service: AdminService = Depends(get_admin_service),
 ) -> AdminTaskRetryResponse:
     try:
-        task = service.retry_task(task_id, updated_by=updated_by)
+        task = service.retry_task(task_id, updated_by=principal.caller_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AdminOperationError as exc:

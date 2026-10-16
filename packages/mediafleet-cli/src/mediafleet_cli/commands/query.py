@@ -15,10 +15,10 @@ from mediafleet_cli.output import (
 )
 from mediafleet_cli.runtime import ConnectionOptions, create_client
 
-task_app = typer.Typer(help="查询媒体任务和产物。", no_args_is_help=True)
+task_app = typer.Typer(help="查询和管理媒体任务及产物。", no_args_is_help=True)
 node_app = typer.Typer(help="查询媒体节点。", no_args_is_help=True)
-binding_app = typer.Typer(help="查询流绑定。", no_args_is_help=True)
-recorder_app = typer.Typer(help="查询录制服务器。", no_args_is_help=True)
+binding_app = typer.Typer(help="查询和管理流绑定。", no_args_is_help=True)
+recorder_app = typer.Typer(help="查询和管理录制服务器。", no_args_is_help=True)
 
 
 def _connection(url: str | None, context: str | None, ca_bundle: str | None) -> ConnectionOptions:

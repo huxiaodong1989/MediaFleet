@@ -20,6 +20,7 @@ from services.control_center.application.api_security_service import (
     ADMIN_WRITE,
     ApiCredentialService,
     READ,
+    RECORDING_WRITE,
     RequestAuditService,
     TASK_WRITE,
 )
@@ -54,6 +55,34 @@ def _app(tmp_path):
     @app.post("/api/v1/tasks/example", dependencies=[Depends(verify_internal_api_key)])
     def write_task(request: Request):
         return {"caller_id": request.state.authenticated_principal.caller_id}
+
+    @app.post(
+        "/api/v1/admin/tasks/example/retry",
+        dependencies=[Depends(verify_internal_api_key)],
+    )
+    def retry_task():
+        return {"ok": True}
+
+    @app.post(
+        "/api/v1/recordings/start",
+        dependencies=[Depends(verify_internal_api_key)],
+    )
+    def start_recording():
+        return {"ok": True}
+
+    @app.post(
+        "/api/v1/rtc/stream-bindings",
+        dependencies=[Depends(verify_internal_api_key)],
+    )
+    def create_binding():
+        return {"ok": True}
+
+    @app.patch(
+        "/api/v1/recording-servers/example/status",
+        dependencies=[Depends(verify_internal_api_key)],
+    )
+    def update_recording_server():
+        return {"ok": True}
 
     @app.middleware("http")
     async def complete_audit(request, call_next):
@@ -102,6 +131,46 @@ def test_scoped_key_allows_read_and_rejects_write(tmp_path):
         assert read.json()["caller_id"] == "ci.automation"
         assert write.status_code == 403
         assert TASK_WRITE in write.json()["detail"]
+    finally:
+        engine.dispose()
+
+
+def test_task_write_scope_covers_admin_retry_but_not_recording(tmp_path):
+    engine, _, app = _app(tmp_path)
+    try:
+        with TestClient(app) as client:
+            created = _create_key(client, scopes=[TASK_WRITE])
+            headers = {"X-API-Key": created["api_key"]}
+            task_retry = client.post(
+                "/api/v1/admin/tasks/example/retry",
+                headers=headers,
+            )
+            recording = client.post("/api/v1/recordings/start", headers=headers)
+
+        assert task_retry.status_code == 200
+        assert recording.status_code == 403
+        assert RECORDING_WRITE in recording.json()["detail"]
+    finally:
+        engine.dispose()
+
+
+def test_recording_write_scope_covers_commands_and_bindings_only(tmp_path):
+    engine, _, app = _app(tmp_path)
+    try:
+        with TestClient(app) as client:
+            created = _create_key(client, scopes=[RECORDING_WRITE])
+            headers = {"X-API-Key": created["api_key"]}
+            recording = client.post("/api/v1/recordings/start", headers=headers)
+            binding = client.post("/api/v1/rtc/stream-bindings", headers=headers)
+            server_status = client.patch(
+                "/api/v1/recording-servers/example/status",
+                headers=headers,
+            )
+
+        assert recording.status_code == 200
+        assert binding.status_code == 200
+        assert server_status.status_code == 403
+        assert ADMIN_WRITE in server_status.json()["detail"]
     finally:
         engine.dispose()
 

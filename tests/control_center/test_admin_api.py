@@ -312,6 +312,7 @@ def test_admin_can_reset_failed_task_for_background_retry(tmp_path):
             assert task.publish_status == "PENDING"
             assert task.retry_count == 0
             assert task.executor_node_id is None
+            assert task.updated_by == "bootstrap"
     finally:
         engine.dispose()
 
