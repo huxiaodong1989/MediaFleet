@@ -63,6 +63,10 @@ from services.control_center.application.admin_service import (
 from services.control_center.application.content_evaluation_query_service import (
     ContentEvaluationQueryService,
 )
+from services.control_center.application.api_security_service import (
+    ApiCredentialService,
+    RequestAuditService,
+)
 from services.control_center.publishers import (
     TaskDispatchLoop,
     TaskDispatchLoopConfig,
@@ -89,6 +93,8 @@ class ControlCenterRuntime:
     publisher: ChannelTaskPublisher
     command_publisher: PikaRecorderCommandPublisher
     api_key: str
+    credential_service: ApiCredentialService | None = None
+    audit_service: RequestAuditService | None = None
     content_prompt_service: PromptManagementService | None = None
     image_prompt_service: ImagePromptManagementService | None = None
     image_intake_service: ImageAnalysisIntakeService | None = None
@@ -257,6 +263,12 @@ def build_control_center_runtime() -> ControlCenterRuntime:
     init_database(settings)
 
     from media_platform.infrastructure.database.session import SessionLocal
+
+    credential_service = ApiCredentialService(
+        SessionLocal,
+        bootstrap_api_key=settings.API_KEY,
+    )
+    audit_service = RequestAuditService(SessionLocal)
 
     rabbitmq = settings.rabbitmq
     media_task_publisher = PikaTaskPublisher(
@@ -470,6 +482,8 @@ def build_control_center_runtime() -> ControlCenterRuntime:
         publisher=publisher,
         command_publisher=command_publisher,
         api_key=settings.API_KEY,
+        credential_service=credential_service,
+        audit_service=audit_service,
         admin_service=admin_service,
         content_prompt_service=content_prompt_service,
         image_prompt_service=image_prompt_service,

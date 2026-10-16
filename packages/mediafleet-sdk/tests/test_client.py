@@ -20,10 +20,115 @@ from mediafleet_sdk import (
     TransportError,
     ValidationError,
 )
+from mediafleet_sdk.models import CredentialCreate
 
 
 API_KEY = "sdk-test-placeholder-key"
 BASE_URL = "https://mediafleet.example.com"
+
+
+def test_security_resource_sends_write_body_and_never_retries() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/rotate"):
+            return httpx.Response(503, json={"detail": "busy"})
+        return httpx.Response(
+            201,
+            json={
+                "credential_id": "00000000-0000-0000-0000-000000000001",
+                "caller_id": "ci.automation",
+                "display_name": "CI",
+                "credential_name": "default",
+                "scopes": ["read"],
+                "status": "ACTIVE",
+                "expires_at": None,
+                "api_key": "mfk_once_only",
+            },
+        )
+
+    client = MediaFleetClient(
+        base_url=BASE_URL,
+        api_key=API_KEY,
+        retry=RetryPolicy(max_attempts=3, backoff_factor=0),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        created = client.security.create_credential(
+            CredentialCreate(
+                caller_id="ci.automation",
+                display_name="CI",
+                credential_name="default",
+                scopes=["read"],
+            ),
+            idempotency_key="credential-create-1",
+        )
+        with pytest.raises(ServiceUnavailableError):
+            client.security.rotate_credential(
+                "00000000-0000-0000-0000-000000000001"
+            )
+    finally:
+        client.close()
+
+    assert created.api_key == "mfk_once_only"
+    assert requests[0].headers["Idempotency-Key"] == "credential-create-1"
+    assert requests[0].headers["X-API-Key"] == API_KEY
+    assert requests[0].content
+    assert len([request for request in requests if request.url.path.endswith("/rotate")]) == 1
+
+
+def test_security_read_models_parse_and_hide_absent_plaintext() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/scopes"):
+            return httpx.Response(200, json={"scopes": ["read", "admin:write"]})
+        if request.url.path.endswith("/credentials"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "credential_id": "credential-1",
+                        "caller_id": "ops",
+                        "display_name": "运维",
+                        "credential_name": "laptop",
+                        "scopes": ["read"],
+                        "status": "ACTIVE",
+                        "expires_at": None,
+                        "created_at": "2026-10-16T10:00:00Z",
+                        "api_key": None,
+                    }
+                ],
+            )
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "event_id": "event-1",
+                    "request_id": "request-1",
+                    "caller_id": "ops",
+                    "credential_id": "credential-1",
+                    "method": "POST",
+                    "path": "/api/v1/tasks",
+                    "action": "post:/api/v1/tasks",
+                    "required_scopes": ["task:write"],
+                    "idempotency_key_digest": "digest",
+                    "result": "SUCCEEDED",
+                    "http_status": 201,
+                    "started_at": "2026-10-16T10:00:00Z",
+                    "completed_at": "2026-10-16T10:00:01Z",
+                    "error_code": None,
+                }
+            ],
+        )
+
+    with MediaFleetClient(
+        base_url=BASE_URL,
+        api_key=API_KEY,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        assert "admin:write" in client.security.scopes().scopes
+        assert client.security.list_credentials()[0].api_key is None
+        assert client.security.list_audit_events(limit=10)[0].http_status == 201
 
 
 def _task_summary(**extra: Any) -> dict[str, Any]:

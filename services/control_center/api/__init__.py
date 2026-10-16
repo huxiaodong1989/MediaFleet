@@ -13,6 +13,7 @@ from services.control_center.api.stream_bindings import (
     router as stream_binding_router,
 )
 from services.control_center.api.tasks import router as task_router
+from services.control_center.api.security_admin import router as security_admin_router
 
 __all__ = [
     "admin_router",
@@ -22,4 +23,5 @@ __all__ = [
     "recording_server_router",
     "stream_binding_router",
     "task_router",
+    "security_admin_router",
 ]

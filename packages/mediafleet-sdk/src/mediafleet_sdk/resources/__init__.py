@@ -8,6 +8,7 @@ from mediafleet_sdk.resources.recording_servers import (
     RecordingServersResource,
 )
 from mediafleet_sdk.resources.system import AsyncSystemResource, SystemResource
+from mediafleet_sdk.resources.security import AsyncSecurityResource, SecurityResource
 from mediafleet_sdk.resources.tasks import AsyncTasksResource, TasksResource
 
 __all__ = [
@@ -16,11 +17,13 @@ __all__ = [
     "AsyncBindingsResource",
     "AsyncNodesResource",
     "AsyncRecordingServersResource",
+    "AsyncSecurityResource",
     "AsyncSystemResource",
     "AsyncTasksResource",
     "BindingsResource",
     "NodesResource",
     "RecordingServersResource",
+    "SecurityResource",
     "SystemResource",
     "TasksResource",
 ]
