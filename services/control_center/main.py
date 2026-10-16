@@ -31,6 +31,7 @@ from services.control_center.api import (
     recording_server_router,
     stream_binding_router,
     task_router,
+    security_admin_router,
 )
 from services.control_center.api.legacy_routes.object_detection import (
     router as legacy_object_detection_router,
@@ -112,10 +113,40 @@ def create_control_center_app(
     application.include_router(recording_server_router)
     application.include_router(stream_binding_router)
     application.include_router(task_router)
+    application.include_router(security_admin_router)
     application.include_router(legacy_stream_router, prefix="/api/v1")
     application.include_router(legacy_video_router, prefix="/api/v1")
     application.include_router(legacy_recog_router, prefix="/api/v1")
     application.include_router(legacy_object_detection_router, prefix="/api/v1")
+
+    @application.middleware("http")
+    async def finalize_api_audit(request, call_next):
+        """写请求先记录 STARTED，响应完成后再写入可信结果。"""
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            runtime = getattr(request.app.state, "control_center_runtime", None)
+            audit_service = getattr(runtime, "audit_service", None)
+            audit_event_id = getattr(request.state, "audit_event_id", None)
+            if audit_service is not None and audit_event_id:
+                audit_service.complete(
+                    audit_event_id,
+                    http_status=500,
+                    error_message="未处理的服务端异常",
+                )
+            raise
+        runtime = getattr(request.app.state, "control_center_runtime", None)
+        audit_service = getattr(runtime, "audit_service", None)
+        audit_event_id = getattr(request.state, "audit_event_id", None)
+        if audit_service is not None and audit_event_id:
+            try:
+                audit_service.complete(audit_event_id, http_status=response.status_code)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "API审计结果回写失败: event_id=%s", audit_event_id
+                )
+        return response
 
     @application.middleware("http")
     async def disable_admin_ui_cache(request, call_next):

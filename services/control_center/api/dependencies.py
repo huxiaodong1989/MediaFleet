@@ -1,6 +1,8 @@
-"""调用中心 API 依赖解析与内部认证。"""
+"""调用中心 API 依赖解析、身份认证、范围授权与写请求审计。"""
 
-from secrets import compare_digest
+from __future__ import annotations
+
+import uuid
 
 from fastapi import HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
@@ -28,6 +30,16 @@ from services.control_center.application.admin_service import AdminService
 from services.control_center.application.content_evaluation_query_service import (
     ContentEvaluationQueryService,
 )
+from services.control_center.application.api_security_service import (
+    ADMIN_WRITE,
+    AuthenticationFailed,
+    AuthenticatedPrincipal,
+    NODE_WRITE,
+    PermissionDenied,
+    READ,
+    RECORDING_WRITE,
+    TASK_WRITE,
+)
 
 
 X_API_KEY = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -43,19 +55,107 @@ def _get_runtime(request: Request):
     return runtime
 
 
+def _required_scopes(request: Request) -> frozenset[str]:
+    """按稳定 API 资源和 HTTP 语义映射最小权限范围。"""
+
+    path = request.url.path
+    if path.startswith("/api/v1/admin/security"):
+        return frozenset({ADMIN_WRITE})
+    if path == "/api/v1/nodes/select":
+        return frozenset({READ})
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        # 历史 GET cancel 路由实际会下发停止命令，不能按只读处理。
+        if "/record_cancel/" not in request.url.path:
+            return frozenset({READ})
+    if path.startswith("/api/v1/nodes"):
+        return frozenset({NODE_WRITE})
+    if path.startswith("/api/v1/recording-servers"):
+        return frozenset({ADMIN_WRITE})
+    if path.startswith("/api/v1/recordings"):
+        return frozenset({RECORDING_WRITE})
+    if path.startswith("/api/v1/rtc/stream-bindings") or path.startswith("/api/v1/stream"):
+        return frozenset({RECORDING_WRITE})
+    if path.startswith("/api/v1/admin"):
+        return frozenset({ADMIN_WRITE})
+    if path.startswith(("/api/v1/tasks", "/api/v1/video", "/api/v1/recog", "/api/v1/object_detection")):
+        return frozenset({TASK_WRITE})
+    # 新增受保护写路由若未显式归类，默认要求最高管理范围，避免权限旁路。
+    return frozenset({ADMIN_WRITE})
+
+
+def get_authenticated_principal(request: Request) -> AuthenticatedPrincipal:
+    principal = getattr(request.state, "authenticated_principal", None)
+    if principal is None:
+        raise HTTPException(status_code=401, detail="请求尚未通过身份认证")
+    return principal
+
+
 def verify_internal_api_key(
     request: Request,
     api_key: str | None = Security(X_API_KEY),
-) -> None:
-    """校验 RTC 等内部调用方通过 `X-API-Key` 传入的服务密钥。"""
+) -> AuthenticatedPrincipal:
+    """认证 API Key、校验权限范围，并为写请求预写审计事件。"""
 
     runtime = _get_runtime(request)
-    expected = str(runtime.api_key or "")
-    if not api_key or not expected or not compare_digest(api_key, expected):
+    service = getattr(runtime, "credential_service", None)
+    try:
+        if service is not None:
+            principal = service.authenticate(api_key)
+        else:
+            # 测试夹具和迁移期运行时仍可使用部署注入的共享引导凭据。
+            from secrets import compare_digest
+
+            expected = str(runtime.api_key or "")
+            if not api_key or not expected or not compare_digest(api_key, expected):
+                raise AuthenticationFailed("API Key 无效")
+            principal = AuthenticatedPrincipal(
+                caller_id="bootstrap",
+                display_name="部署引导凭据",
+                scopes=frozenset({"*"}),
+                bootstrap=True,
+            )
+        required_scopes = _required_scopes(request)
+        principal.require(required_scopes)
+    except AuthenticationFailed as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="无效或缺失的内部API密钥",
-        )
+            detail=str(exc),
+        ) from exc
+    except PermissionDenied as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
+    request.state.authenticated_principal = principal
+    request.state.required_scopes = required_scopes
+    if request.method not in {"GET", "HEAD", "OPTIONS"} or "/record_cancel/" in request.url.path:
+        audit_service = getattr(runtime, "audit_service", None)
+        if service is not None and audit_service is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="审计服务不可用，写请求已拒绝",
+            )
+        if audit_service is not None:
+            request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+            route = request.scope.get("route")
+            route_name = getattr(route, "name", None) or request.url.path
+            try:
+                request.state.audit_event_id = audit_service.begin(
+                    request_id=request_id[:64],
+                    principal=principal,
+                    method=request.method,
+                    path=request.url.path,
+                    action=f"{request.method.lower()}:{route_name}",
+                    required_scopes=required_scopes,
+                    idempotency_key=request.headers.get("Idempotency-Key"),
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="审计记录不可用，写请求已拒绝",
+                ) from exc
+    return principal
 
 
 def get_task_dispatch_service(request: Request) -> TaskDispatchService:
@@ -225,5 +325,6 @@ __all__ = [
     "get_stream_binding_service",
     "get_task_dispatch_service",
     "get_task_query_service",
+    "get_authenticated_principal",
     "verify_internal_api_key",
 ]

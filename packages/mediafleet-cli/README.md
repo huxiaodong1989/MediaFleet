@@ -1,6 +1,6 @@
 # MediaFleet CLI
 
-`mediafleet-cli` 是 MediaFleet 控制中心的只读命令行客户端。它通过
+`mediafleet-cli` 是 MediaFleet 控制中心的命令行客户端。它通过
 [`mediafleet-sdk`](../mediafleet-sdk/README.md) 调用 REST API，不直接连接 MySQL、RabbitMQ、
 Redis、对象存储或节点文件系统。
 
@@ -76,7 +76,7 @@ mediafleet overview --json
 
 示例中的密钥是占位符，不能把真实凭据写入源码、配置示例或命令历史。
 
-## 只读命令
+## 查询与安全管理命令
 
 ```text
 mediafleet version
@@ -90,9 +90,16 @@ mediafleet task files TASK_ID
 mediafleet node list
 mediafleet binding list
 mediafleet recorder list
+
+mediafleet security scopes
+mediafleet security credential list
+mediafleet security credential create --caller-id ID --display-name NAME --name KEY --scope read
+mediafleet security credential rotate CREDENTIAL_ID --yes
+mediafleet security credential revoke CREDENTIAL_ID --yes
+mediafleet security audit
 ```
 
-查询命令支持 `--json` 和 `--no-color`。列表命令使用有界分页，任务和绑定列表提供常用筛选
+命令支持 `--json` 和 `--no-color`。列表命令使用有界分页，任务和绑定列表提供常用筛选
 参数。示例：
 
 ```bash
@@ -125,4 +132,6 @@ mediafleet task get TASK_ID --no-color
 - 配置文件只允许保存 context、URL 和 CA 文件路径。
 - API Key 只从环境变量或操作系统凭据库读取。
 - CLI 不提供通用 HTTP、SQL、Shell、消息发布或文件访问入口。
-- 当前命令全部只读；写操作等待调用方身份、权限范围、可信审计和幂等策略完成后再设计。
+- 凭据创建和轮换产生的 API Key 只在成功响应中显示一次，不写入配置文件或日志。
+- 轮换和吊销必须显式传入 `--yes`；其他业务写命令仍按资源逐步开放。
+- 轮换和吊销必须显式传入 `--yes`；其他业务写命令仍按资源逐步开放。

@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 from mediafleet_cli.commands import auth as auth_commands
 from mediafleet_cli.commands import query as query_commands
+from mediafleet_cli.commands import security as security_commands
 from mediafleet_cli.main import app
 from mediafleet_sdk import AuthenticationError
 from mediafleet_sdk.models import (
@@ -22,6 +23,9 @@ from mediafleet_sdk.models import (
     TaskFile,
     TaskPage,
     TaskSummary,
+    AuditEvent,
+    Credential,
+    SecurityScopes,
 )
 
 runner = CliRunner()
@@ -156,6 +160,39 @@ class FakeClient:
             list=BindingPage(items=[binding], total=1, page=1, page_size=20)
         )
         self.recording_servers = Resource(list=[recorder])
+        credential = Credential(
+            credential_id="credential-1",
+            caller_id="ci.automation",
+            display_name="CI",
+            credential_name="default",
+            scopes=["read"],
+            status="ACTIVE",
+            api_key="mfk_once_only",
+        )
+        self.security = Resource(
+            scopes=SecurityScopes(scopes=["read", "admin:write"]),
+            list_credentials=[credential.model_copy(update={"api_key": None})],
+            create_credential=credential,
+            rotate_credential=credential,
+            revoke_credential=credential.model_copy(
+                update={"status": "REVOKED", "api_key": None}
+            ),
+            list_audit_events=[
+                AuditEvent(
+                    event_id="event-1",
+                    request_id="request-1",
+                    caller_id="ci.automation",
+                    credential_id="credential-1",
+                    method="POST",
+                    path="/api/v1/tasks",
+                    action="post:/api/v1/tasks",
+                    required_scopes=["task:write"],
+                    result="SUCCEEDED",
+                    http_status=201,
+                    started_at=TIMESTAMP,
+                )
+            ],
+        )
 
     def __enter__(self):
         return self
@@ -174,6 +211,7 @@ def fake_client(monkeypatch):
         return client
 
     monkeypatch.setattr(query_commands, "create_client", create)
+    monkeypatch.setattr(security_commands, "create_client", create)
     return client, calls
 
 
@@ -280,6 +318,50 @@ def test_binding_filters_are_forwarded(fake_client):
 
     assert result.exit_code == 0, result.output
     assert client.bindings.calls[-1][2]["space_id"] == "room-1"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["security", "scopes", "--json"],
+        ["security", "credential", "list", "--json"],
+        [
+            "security",
+            "credential",
+            "create",
+            "--caller-id",
+            "ci.automation",
+            "--display-name",
+            "CI",
+            "--name",
+            "default",
+            "--scope",
+            "read",
+            "--json",
+        ],
+        ["security", "credential", "rotate", "credential-1", "--yes", "--json"],
+        ["security", "credential", "revoke", "credential-1", "--yes", "--json"],
+        ["security", "audit", "--json"],
+    ],
+)
+def test_security_commands_emit_json(fake_client, arguments):
+    result = runner.invoke(app, arguments)
+
+    assert result.exit_code == 0, result.output
+    assert parse_stdout(result) is not None
+
+
+def test_rotate_and_revoke_require_explicit_yes(fake_client):
+    rotate = runner.invoke(
+        app, ["security", "credential", "rotate", "credential-1", "--json"]
+    )
+    revoke = runner.invoke(
+        app, ["security", "credential", "revoke", "credential-1", "--json"]
+    )
+
+    assert rotate.exit_code == 2
+    assert revoke.exit_code == 2
+    assert "--yes" in rotate.stderr
 
 
 def test_json_error_uses_stderr_and_authorization_exit_code(monkeypatch):

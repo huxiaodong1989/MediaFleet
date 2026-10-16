@@ -4,33 +4,17 @@
 配置在请求校验时懒加载，避免导入路由模块时因为本地 `.env` 未准备好直接失败。
 """
 
-from secrets import compare_digest
+from fastapi import Request
 
-from fastapi import HTTPException, Security, status
-from fastapi.security import APIKeyHeader
-
-from media_platform.common.config import get_settings
+from services.control_center.api.dependencies import verify_internal_api_key
 
 
-# 定义API密钥头部
-X_API_KEY = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-async def verify_api_key(api_key: str = Security(X_API_KEY)):
+async def verify_api_key(request: Request):
     """验证历史 API 调用方的内部密钥并返回兼容身份信息。"""
 
-    if api_key is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="缺少API密钥"
-        )
-
-    settings = get_settings()
-    expected_key = str(settings.API_KEY or "")
-    if not expected_key or not compare_digest(api_key, expected_key):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="无效的API密钥"
-        )
-
-    return {"name": "默认服务", "tenant_id": "default"}
+    principal = verify_internal_api_key(request, request.headers.get("X-API-Key"))
+    return {
+        "name": principal.display_name,
+        "caller_id": principal.caller_id,
+        "tenant_id": "default",
+    }

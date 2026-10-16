@@ -92,7 +92,11 @@ async def get_video_process_status(
 
 
 @router.post("/get_local_video_imgs")
-async def get_local_video_imgs(file_url: str,interval: int = 5):
+async def get_local_video_imgs(
+    file_url: str,
+    interval: int = 5,
+    api_key: dict = Depends(verify_api_key),
+):
     """获取视频帧"""
     from services.media_worker.processors.video.video_process import VideoProcess
 
@@ -116,7 +120,11 @@ async def get_local_video_imgs(file_url: str,interval: int = 5):
 
 
 @router.post("/video_set_watermark")
-async def video_set_watermark(file_url:str="",watermark: str = ""):
+async def video_set_watermark(
+    file_url: str = "",
+    watermark: str = "",
+    api_key: dict = Depends(verify_api_key),
+):
     """视频添加水印"""
     from services.media_worker.processors.video.video_process import VideoProcess
 

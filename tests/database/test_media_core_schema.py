@@ -14,6 +14,9 @@ from sqlalchemy.schema import CreateTable
 from media_platform.infrastructure.database.base import Base
 from media_platform.infrastructure.database.init import ensure_tables
 from media_platform.infrastructure.database.models import (  # noqa: F401
+    ApiAuditEventModel,
+    ApiCredentialModel,
+    ApiPrincipalModel,
     MediaFileModel,
     MediaNodeModel,
     MediaStreamBindingModel,
@@ -51,7 +54,14 @@ IMAGE_ANALYSIS_TABLES = {
     "image_analysis_frame",
 }
 RUNTIME_CONFIG_TABLES = {"service_config", "service_config_version"}
-APPLICATION_TABLES = CORE_TABLES | CONTENT_ANALYSIS_TABLES | IMAGE_ANALYSIS_TABLES | RUNTIME_CONFIG_TABLES
+SECURITY_TABLES = {"api_principal", "api_credential", "api_audit_event"}
+APPLICATION_TABLES = (
+    CORE_TABLES
+    | CONTENT_ANALYSIS_TABLES
+    | IMAGE_ANALYSIS_TABLES
+    | RUNTIME_CONFIG_TABLES
+    | SECURITY_TABLES
+)
 AUDIT_COLUMNS = {"cjr", "xgr", "xxm", "cjsj", "xgsj"}
 NODE_AUDIT_COLUMNS = {"cjr", "xgr", "cjsj", "xgsj"}
 
@@ -132,11 +142,11 @@ def test_development_auto_init_creates_current_tables():
         engine.dispose()
 
 
-def test_alembic_has_clean_baseline_and_image_analysis_revisions():
+def test_alembic_has_clean_baseline_and_incremental_revisions():
     config = Config(str(ROOT / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20261016_0004"]
+    assert scripts.get_heads() == ["20261019_0005"]
     revision = scripts.get_revision("20260928_0001")
     assert revision is not None
     assert revision.down_revision is None
@@ -147,7 +157,11 @@ def test_alembic_has_clean_baseline_and_image_analysis_revisions():
     assert terminal_revision is not None
     assert terminal_revision.down_revision == "20261009_0002"
     config_revision = scripts.get_revision("20261016_0004")
+    assert config_revision is not None
     assert config_revision.down_revision == "20261012_0003"
+    security_revision = scripts.get_revision("20261019_0005")
+    assert security_revision is not None
+    assert security_revision.down_revision == "20261016_0004"
 
 
 def test_alembic_uses_project_version_table():

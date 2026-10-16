@@ -22,6 +22,7 @@ from mediafleet_sdk.resources import (
     AsyncBindingsResource,
     AsyncNodesResource,
     AsyncRecordingServersResource,
+    AsyncSecurityResource,
     AsyncSystemResource,
     AsyncTasksResource,
 )
@@ -62,6 +63,7 @@ class AsyncMediaFleetClient:
         self.nodes = AsyncNodesResource(self)
         self.bindings = AsyncBindingsResource(self)
         self.recording_servers = AsyncRecordingServersResource(self)
+        self.security = AsyncSecurityResource(self)
 
     @property
     def is_closed(self) -> bool:
@@ -95,10 +97,14 @@ class AsyncMediaFleetClient:
         model: Any,
         *,
         params: dict[str, Any] | None = None,
+        json: Any = None,
+        extra_headers: dict[str, str] | None = None,
         auth: bool = True,
     ) -> Any:
         normalized_method = method.upper()
-        headers = {"X-API-Key": self.config.api_key} if auth else None
+        headers = {"X-API-Key": self.config.api_key} if auth else {}
+        if extra_headers:
+            headers.update(extra_headers)
         safe_request_path = "/" + path.lstrip("/").split("?", 1)[0]
         for attempt in range(1, self.config.retry.max_attempts + 1):
             failure: str | None = None
@@ -107,6 +113,7 @@ class AsyncMediaFleetClient:
                     normalized_method,
                     path.lstrip("/"),
                     params=params,
+                    json=json,
                     headers=headers,
                 )
             except httpx.TimeoutException:

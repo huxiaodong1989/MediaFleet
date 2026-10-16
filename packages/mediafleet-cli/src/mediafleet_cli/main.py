@@ -15,11 +15,12 @@ from mediafleet_cli.commands.query import (
     recorder_app,
     task_app,
 )
+from mediafleet_cli.commands.security import security_app
 from mediafleet_cli.output import console, emit_json
 
 app = typer.Typer(
     name="mediafleet",
-    help="通过 MediaFleet SDK 查询控制中心。",
+    help="通过 MediaFleet SDK 查询和管理控制中心。",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -32,6 +33,7 @@ app.add_typer(binding_app, name="binding")
 app.add_typer(recorder_app, name="recorder")
 app.add_typer(context_app, name="context")
 app.add_typer(auth_app, name="auth")
+app.add_typer(security_app, name="security")
 
 
 @app.command("version")

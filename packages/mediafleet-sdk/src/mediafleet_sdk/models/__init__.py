@@ -5,18 +5,28 @@ from mediafleet_sdk.models.base import Page, SDKModel, UtcDateTime
 from mediafleet_sdk.models.bindings import BindingPage, BindingSummary
 from mediafleet_sdk.models.nodes import NodePage, NodeSummary
 from mediafleet_sdk.models.recording import RecordingServer
+from mediafleet_sdk.models.security import (
+    AuditEvent,
+    Credential,
+    CredentialCreate,
+    SecurityScopes,
+)
 from mediafleet_sdk.models.system import ServiceHealth, ServiceInfo
 from mediafleet_sdk.models.tasks import TaskDetail, TaskFile, TaskPage, TaskSummary
 
 __all__ = [
     "AdminOverview",
+    "AuditEvent",
     "BindingPage",
     "BindingSummary",
+    "Credential",
+    "CredentialCreate",
     "NodePage",
     "NodeSummary",
     "Page",
     "QueueSummary",
     "RecordingServer",
+    "SecurityScopes",
     "SDKModel",
     "ServiceHealth",
     "ServiceInfo",

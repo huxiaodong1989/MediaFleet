@@ -1,5 +1,11 @@
 """媒体平台国标业务核心表和录制基础设施表 ORM。"""
 
+from media_platform.infrastructure.database.models.api_security import (
+    ApiAuditEventModel,
+    ApiCredentialModel,
+    ApiPrincipalModel,
+)
+
 from media_platform.infrastructure.database.models.content_prompt_bundle import (
     ContentPromptBundleModel,
 )
@@ -30,6 +36,9 @@ from media_platform.infrastructure.database.models.recording_server import (
 __all__ = [
     "ServiceConfigModel",
     "ServiceConfigVersionModel",
+    "ApiAuditEventModel",
+    "ApiCredentialModel",
+    "ApiPrincipalModel",
     "ContentPromptBundleModel",
     "ContentEvaluationRecordModel",
     "ContentEvaluationStepModel",
