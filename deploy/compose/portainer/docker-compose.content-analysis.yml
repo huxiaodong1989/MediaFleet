@@ -14,6 +14,8 @@ services:
       SERVICE_LOG_LEVEL: ${CONTENT_ANALYSIS_LOG_LEVEL:-INFO}
       # 节点心跳使用的内部密钥，必须与控制中心 API_KEY 一致。
       API_KEY: ${CONTENT_ANALYSIS_API_KEY:-change-this-api-key}
+      RUNTIME_CONFIG_ENCRYPTION_KEY: ${RUNTIME_CONFIG_ENCRYPTION_KEY:-}
+      RUNTIME_CONFIG_BOOTSTRAP: ${CONTENT_ANALYSIS_CONFIG_BOOTSTRAP:-false}
       APP_ENV: ${APP_ENV:-production}
       TZ: ${TZ:-Asia/Shanghai}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}

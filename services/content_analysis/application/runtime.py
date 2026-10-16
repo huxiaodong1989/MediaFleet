@@ -8,6 +8,10 @@ from datetime import timedelta
 import logging
 import os
 import socket
+from media_platform.infrastructure.runtime_config import RuntimeConfigStore
+from media_platform.application.runtime_config import AdjustableLimits, RuntimeConfigRefresher
+from media_platform.application.analysis_config import AnalysisConfigReader, initialize_analysis_config
+from media_platform.infrastructure.messaging import TaskBusyError
 from threading import Event, Thread
 
 from sqlalchemy.exc import IntegrityError
@@ -101,6 +105,7 @@ class ContentAnalysisRuntime:
     consumer_enabled: bool = True
     reconnect_delay_seconds: float = 5.0
     heartbeat_reporter: NodeHeartbeatReporter | None = None
+    config_refresher: RuntimeConfigRefresher | None = None
     _stop_event: Event = field(default_factory=Event, init=False, repr=False)
     _consumer_thread: Thread | None = field(default=None, init=False, repr=False)
 
@@ -120,6 +125,8 @@ class ContentAnalysisRuntime:
                 self._stop_event.wait(self.reconnect_delay_seconds)
 
     async def start(self) -> None:
+        if self.config_refresher:
+            self.config_refresher.start()
         if self.heartbeat_reporter is not None:
             self.heartbeat_reporter.start()
         if not self.consumer_enabled:
@@ -135,6 +142,8 @@ class ContentAnalysisRuntime:
 
     async def close(self) -> None:
         self._stop_event.set()
+        if self.config_refresher:
+            self.config_refresher.close()
         self.consumer.stop()
         if self._consumer_thread is not None and self._consumer_thread.is_alive():
             await asyncio.to_thread(self._consumer_thread.join, 10)
@@ -153,6 +162,9 @@ def build_content_analysis_runtime() -> ContentAnalysisRuntime:
     from media_platform.infrastructure.database.session import SessionLocal
 
     worker_id = _instance_id()
+    config_store = RuntimeConfigStore(SessionLocal)
+    config_reader = AnalysisConfigReader(config_store, "content-analysis")
+    configured_connection = config_store.snapshot("content-analysis", "model_connection")
     default_model = os.getenv("CONTENT_ANALYSIS_DEFAULT_MODEL", "gpt-4.1").strip()
     llm_api_key = os.getenv("CONTENT_ANALYSIS_OPENAI_API_KEY", "").strip()
     llm_base_url = os.getenv(
@@ -166,6 +178,25 @@ def build_content_analysis_runtime() -> ContentAnalysisRuntime:
         mask_secret(llm_api_key),
     )
     _ensure_bootstrap_prompt(SessionLocal, default_model)
+    prefetch = _positive_int("CONTENT_ANALYSIS_PREFETCH_COUNT", 1)
+    limits = AdjustableLimits(task=prefetch, model=prefetch)
+    with SessionLocal() as session:
+        published = PromptBundleRepository(session).get_published("GLOBAL")
+        allowed_models = sorted({step["model"] for step in published.content["steps"]})
+    connection = configured_connection.content if configured_connection else {
+        "base_url": llm_base_url, "allowed_models": allowed_models,
+        "timeout_seconds": _positive_float("CONTENT_ANALYSIS_LLM_TIMEOUT_SECONDS", 180),
+    }
+    llm_api_key = configured_connection.api_key if configured_connection else llm_api_key
+    if not llm_api_key.strip():
+        raise ValueError("内容分析模型API Key未配置")
+    initialize_analysis_config(config_store, "content-analysis", connection,
+                               {"task_concurrency": prefetch, "model_concurrency": prefetch}, llm_api_key)
+
+    def client_factory(snapshot):
+        config = snapshot.content if snapshot else connection
+        return EvaluationLlmClient(api_key=snapshot.api_key if snapshot else llm_api_key,
+                                   base_url=config["base_url"], timeout_seconds=config["timeout_seconds"], limits=limits)
 
     progress_callback = ProgressCallbackClient(
         timeout_seconds=_positive_float("CONTENT_ANALYSIS_CALLBACK_TIMEOUT_SECONDS", 10)
@@ -184,11 +215,9 @@ def build_content_analysis_runtime() -> ContentAnalysisRuntime:
             timeout_seconds=_positive_float("CONTENT_ANALYSIS_DOWNLOAD_TIMEOUT_SECONDS", 60),
             max_size_mb=_positive_int("CONTENT_ANALYSIS_MAX_FILE_SIZE_MB", 100),
         ),
-        llm_client=EvaluationLlmClient(
-            api_key=llm_api_key,
-            base_url=llm_base_url,
-            timeout_seconds=_positive_float("CONTENT_ANALYSIS_LLM_TIMEOUT_SECONDS", 180),
-        ),
+        llm_client=None,
+        config_reader=config_reader,
+        client_factory=client_factory,
         progress_callback=progress_callback,
         llm_max_retries=_positive_int("CONTENT_ANALYSIS_LLM_MAX_RETRIES", 3),
     )
@@ -201,7 +230,12 @@ def build_content_analysis_runtime() -> ContentAnalysisRuntime:
         lease_renew_interval=timedelta(seconds=_positive_int("CONTENT_ANALYSIS_LEASE_RENEW_SECONDS", 600)),
     )
     rabbitmq = settings.rabbitmq
-    prefetch = _positive_int("CONTENT_ANALYSIS_PREFETCH_COUNT", 1)
+    def limited_handle(message):
+        with limits.try_slot("task") as admitted:
+            if not admitted:
+                raise TaskBusyError("内容分析任务并发额度已满")
+            execution_service.handle(message)
+
     consumer = ContentAnalysisTaskConsumer(
         RabbitMQConsumerConfig(
             host=rabbitmq.host,
@@ -219,9 +253,18 @@ def build_content_analysis_runtime() -> ContentAnalysisRuntime:
             prefetch_count=prefetch,
             retry_delay_milliseconds=_positive_int("CONTENT_ANALYSIS_RETRY_DELAY_MILLISECONDS", 5000),
         ),
-        execution_service.handle,
+        limited_handle,
     )
     consumer_enabled = _bool("CONTENT_ANALYSIS_CONSUMER_ENABLED", True)
+
+    def apply_performance(snapshot):
+        limits.update(task=snapshot.content["task_concurrency"], model=snapshot.content["model_concurrency"])
+        consumer.update_prefetch(snapshot.content["task_concurrency"])
+
+    refresher = RuntimeConfigRefresher(config_store, "content-analysis", {
+        "model_connection": lambda snapshot: None,
+        "performance": apply_performance,
+    })
 
     def heartbeat_payload() -> dict:
         return {
@@ -232,9 +275,12 @@ def build_content_analysis_runtime() -> ContentAnalysisRuntime:
             "weight": int(os.getenv("MEDIA_NODE_WEIGHT", "100")),
             "capabilities": ["content.class_evaluation"],
             "capacity": {
-                "worker_prefetch": prefetch,
+                "worker_prefetch": consumer.config.prefetch_count,
                 "consumer_enabled": consumer_enabled,
                 "processing_tasks": execution_service.processing_count,
+                "stages": limits.snapshot(),
+                "runtime_config": refresher.status(),
+                "runtime_config_supported": True,
             },
             "readiness": "READY",
             "readiness_details": {"consumer_ready": consumer_enabled},
@@ -261,6 +307,7 @@ def build_content_analysis_runtime() -> ContentAnalysisRuntime:
         consumer_enabled=consumer_enabled,
         reconnect_delay_seconds=_positive_float("CONTENT_ANALYSIS_RECONNECT_DELAY_SECONDS", 5),
         heartbeat_reporter=heartbeat,
+        config_refresher=refresher,
     )
 
 

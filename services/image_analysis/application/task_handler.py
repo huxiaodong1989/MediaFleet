@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import copy
 from datetime import datetime, timedelta
 import logging
 from threading import Event, Thread
@@ -53,6 +54,8 @@ class ImageTaskHandler:
         selection_policy: SourceSelectionPolicy,
         sampling_limits: SamplingLimits,
         lease_timeout: timedelta = timedelta(minutes=10),
+        config_reader=None,
+        model_factory=None,
     ) -> None:
         if not worker_id or lease_timeout < timedelta(seconds=30):
             raise ValueError("图像消费者身份或租约配置无效")
@@ -65,6 +68,8 @@ class ImageTaskHandler:
         self.selection_policy = selection_policy
         self.sampling_limits = sampling_limits
         self.lease_timeout = lease_timeout
+        self.config_reader = config_reader
+        self.model_factory = model_factory
 
     def _claim(self, message: TaskDispatchMessage) -> tuple[int, dict] | None:
         if (
@@ -214,6 +219,13 @@ class ImageTaskHandler:
         )
         renewer.start()
         try:
+            if self.config_reader:
+                params = self.config_reader.task_params(message.task_id, generation)
+            connection = self.config_reader.connection(params) if self.config_reader else None
+            pipeline = self.pipeline
+            if connection is not None:
+                pipeline = copy(self.pipeline)
+                pipeline.model = self.model_factory(connection)
             request = ImageAnalysisRequest.model_validate(params["request"])
             LOGGER.info(
                 "图像课堂任务开始: task_id=%s, message_id=%s, classroom_id=%s, streams=%s, interval_seconds=%s",
@@ -230,6 +242,8 @@ class ImageTaskHandler:
                 expected_version=locked["version"],
                 expected_hash=locked["contentHash"],
             )
+            if connection and prompt.content.model not in connection.content["allowed_models"]:
+                raise TaskPermanentError("锁定提示词模型不在任务连接配置名单中")
             LOGGER.info(
                 "图像提示词版本锁定: task_id=%s, prompt_id=%s, version=%s, model=%s",
                 message.task_id,
@@ -262,7 +276,7 @@ class ImageTaskHandler:
                 sum(len(sample.frames) for sample in plan.samples),
                 request.sample_interval_seconds,
             )
-            result = self.pipeline.execute(
+            result = pipeline.execute(
                 request=request,
                 plan=plan,
                 prompt=prompt,

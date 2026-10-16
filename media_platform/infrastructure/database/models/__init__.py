@@ -3,6 +3,10 @@
 from media_platform.infrastructure.database.models.content_prompt_bundle import (
     ContentPromptBundleModel,
 )
+from media_platform.infrastructure.database.models.service_config import (
+    ServiceConfigModel,
+    ServiceConfigVersionModel,
+)
 from media_platform.infrastructure.database.models.content_evaluation import (
     ContentEvaluationRecordModel,
     ContentEvaluationStepModel,
@@ -24,6 +28,8 @@ from media_platform.infrastructure.database.models.recording_server import (
 )
 
 __all__ = [
+    "ServiceConfigModel",
+    "ServiceConfigVersionModel",
     "ContentPromptBundleModel",
     "ContentEvaluationRecordModel",
     "ContentEvaluationStepModel",

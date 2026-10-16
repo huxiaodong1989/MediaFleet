@@ -34,8 +34,9 @@ class PromptBundleView:
 class PromptManagementService:
     """直接读写共享 MySQL 中的整套评课提示词版本。"""
 
-    def __init__(self, session_factory: Callable[[], Session]):
+    def __init__(self, session_factory: Callable[[], Session], publication_policy=None):
         self.session_factory = session_factory
+        self.publication_policy = publication_policy
 
     @staticmethod
     def _view(row) -> PromptBundleView:
@@ -86,7 +87,8 @@ class PromptManagementService:
     def publish(self, bundle_id: str, *, operator: str) -> PromptBundleView:
         with self.session_factory() as session:
             with session.begin():
-                row = PromptBundleRepository(session).publish(bundle_id, operator=operator)
+                validator = self.publication_policy(session) if self.publication_policy else None
+                row = PromptBundleRepository(session).publish(bundle_id, operator=operator, validate_publish=validator)
                 view = self._view(row)
         return view
 

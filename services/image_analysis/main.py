@@ -76,7 +76,8 @@ def create_image_analysis_app(
             for item in os.getenv("IMAGE_ANALYSIS_ALLOWED_MODELS", "").split(",")
             if item.strip()
         )
-        if prompt_policy is None and (model or allowed_models):
+        initialize_before_runtime = not enabled or prompt_session_factory is not None
+        if initialize_before_runtime and prompt_policy is None and (model or allowed_models):
             prompt_config = ImagePromptPolicy(
                 allowed_models=allowed_models,
                 output_schema_versions=frozenset({"image-metrics.v1"}),
@@ -84,7 +85,7 @@ def create_image_analysis_app(
             )
         else:
             prompt_config = prompt_policy
-        if prompt_config is not None or model or prompt_session_factory is not None:
+        if initialize_before_runtime and (prompt_config is not None or model or prompt_session_factory is not None):
             if not model or prompt_config is None:
                 raise ValueError("图像提示词初始化需要默认模型和受控模型名单")
             if prompt_session_factory is None:

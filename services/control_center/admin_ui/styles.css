@@ -189,3 +189,36 @@ tbody tr:hover { background: #f4f0e8; }
 }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+.config-layout { display: grid; grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 1fr); gap: 24px; align-items: start; }
+.config-editor { padding: 24px; }
+.config-editor .surface-heading { min-height: 40px; align-items: center; padding: 0; }
+.config-form { max-width: 650px; }
+.config-form label { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; font-size: 14px; }
+.config-form input, .config-form textarea, .config-form select { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #d8dddf; border-radius: 6px; background: #fff; color: #182127; font: inherit; }
+.config-form textarea { resize: vertical; }
+.config-form input:focus-visible, .config-form textarea:focus-visible, .config-form select:focus-visible { outline: 2px solid #287566; outline-offset: 2px; }
+.config-form small { color: #526069; }
+.config-model-group { border: 1px solid #e1e5e5; border-radius: 8px; margin: 24px 0; padding: 0 16px 12px; }
+.config-model-group legend { font-size: 14px; font-weight: 600; padding: 0 8px; }
+.config-bulk { display: flex; gap: 8px; padding-top: 12px; }
+.config-bulk button { flex-shrink: 0; }
+.config-review { margin-top: 24px; padding: 20px; border: 1px solid #c9dcd5; border-radius: 8px; background: #f5f9f7; overflow-wrap: anywhere; }
+.config-review p, .config-review li { font-size: 14px; line-height: 1.7; }
+.config-feedback { font-size: 14px; color: #3e5d52; margin: 16px 0; min-height: 24px; }
+.config-error { color: #a02f29; }
+.config-side { display: grid; gap: 24px; }
+.config-side > .surface > .surface-heading { min-height: 88px; margin-bottom: 0; padding: 24px; align-items: center; }
+.config-side .surface-heading .text-link { min-width: 64px; padding: 0 12px; font-size: 12px; }
+.config-instance, .config-history-row { padding: 16px 24px; border-top: 1px solid #edf0ef; font-size: 14px; overflow-wrap: anywhere; }
+.config-instance { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.config-instance small { width: 100%; color: #526069; }
+.config-history { max-height: 540px; overflow-y: auto; }
+.config-history-row { display: flex; gap: 12px; justify-content: space-between; align-items: center; }
+.config-history-row p { margin: 6px 0; }
+.config-history-row small { color: #526069; }
+.config-history-row button { flex-shrink: 0; }
+.config-padding { margin-bottom: 0; padding: 0 24px 24px; }
+#view-runtime-configs button { min-height: 40px; }
+#view-runtime-configs [hidden] { display: none; }
+@media (max-width: 1200px) { .config-layout { grid-template-columns: 1fr; } }

@@ -26,8 +26,8 @@ def test_admin_ui_is_served_by_control_center():
 
     assert response.status_code == 200
     assert "媒体调度中心" in response.text
-    assert "/admin/styles.css?v=20261008-1" in response.text
-    assert "/admin/app.js?v=20261008-1" in response.text
+    assert "/admin/styles.css?v=20261016-1" in response.text
+    assert "/admin/app.js?v=20261012-2" in response.text
     assert response.headers["cache-control"] == "no-store, no-cache, must-revalidate"
     assert response.headers["pragma"] == "no-cache"
     assert response.headers["expires"] == "0"

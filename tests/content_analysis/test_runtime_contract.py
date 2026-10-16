@@ -67,7 +67,7 @@ def test_concurrent_bootstrap_reuses_version_created_by_another_instance(monkeyp
     assert "其他内容分析实例已并发完成提示词初始化" in caplog.text
 
 
-def test_build_content_analysis_runtime_completes_dependency_wiring(monkeypatch):
+def test_build_content_analysis_runtime_completes_dependency_wiring(monkeypatch, tmp_path):
     from media_platform.common import config as config_module
     from media_platform.infrastructure.database import init as database_init_module
 
@@ -91,11 +91,17 @@ def test_build_content_analysis_runtime_completes_dependency_wiring(monkeypatch)
         "init_database",
         lambda value: initialized_with.append(value),
     )
-    monkeypatch.setattr(runtime_module, "_ensure_bootstrap_prompt", lambda *_: None)
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from media_platform.infrastructure.database.base import Base
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'runtime.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setitem(
         sys.modules,
         "media_platform.infrastructure.database.session",
-        SimpleNamespace(SessionLocal=SimpleNamespace()),
+        SimpleNamespace(SessionLocal=factory),
     )
     monkeypatch.setattr(
         runtime_module,
@@ -103,6 +109,7 @@ def test_build_content_analysis_runtime_completes_dependency_wiring(monkeypatch)
         lambda **_: SimpleNamespace(),
     )
     monkeypatch.setenv("CONTENT_ANALYSIS_CONSUMER_ENABLED", "false")
+    monkeypatch.setenv("CONTENT_ANALYSIS_OPENAI_API_KEY", "test-model-key")
 
     runtime = runtime_module.build_content_analysis_runtime()
 
@@ -110,3 +117,5 @@ def test_build_content_analysis_runtime_completes_dependency_wiring(monkeypatch)
     assert isinstance(runtime.consumer, ContentAnalysisTaskConsumer)
     assert runtime.worker_id
     assert runtime.consumer_enabled is False
+    assert runtime.config_refresher is not None
+    engine.dispose()

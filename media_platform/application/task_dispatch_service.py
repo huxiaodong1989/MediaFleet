@@ -58,9 +58,11 @@ class TaskDispatchService:
         self,
         session_factory: Callable[[], Session],
         publisher: TaskPublisher,
+        params_preparer=None,
     ):
         self.session_factory = session_factory
         self.publisher = publisher
+        self.params_preparer = params_preparer
 
     @staticmethod
     def _validate_create(command: CreateTaskCommand) -> None:
@@ -124,6 +126,9 @@ class TaskDispatchService:
                         return TaskCreationResult(existing.id, created=False)
 
                     request_id = command.request_id or f"auto-{uuid4().hex}"
+                    params = params_factory(session) if params_factory else command.params
+                    if self.params_preparer:
+                        params = self.params_preparer(session, command, params)
                     task = MediaTaskModel(
                         id=str(uuid4()),
                         request_id=request_id,
@@ -135,11 +140,7 @@ class TaskDispatchService:
                         status=TaskStatus.PENDING.value,
                         priority=command.priority,
                         progress=0,
-                        params=(
-                            params_factory(session)
-                            if params_factory
-                            else command.params
-                        ),
+                        params=params,
                         callback_url=command.callback_url,
                         executor_node_id=command.target_node_id,
                         retry_count=0,

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#182127" />
     <title>媒体调度中心 · 运维后台</title>
-    <link rel="stylesheet" href="/admin/styles.css?v=20261008-1" />
+    <link rel="stylesheet" href="/admin/styles.css?v=20261016-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -37,6 +37,9 @@
           </button>
           <button class="nav-item" data-view="image-prompts">
             <span class="nav-icon">◈</span><span>图像分析提示词</span>
+          </button>
+          <button class="nav-item" data-view="runtime-configs">
+            <span class="nav-icon">⚙</span><span>服务配置</span>
           </button>
         </nav>
 
@@ -189,8 +192,51 @@
             </section>
           </div>
         </section>
+        <section id="view-runtime-configs" class="view" aria-labelledby="runtime-configs-heading">
+          <div class="view-heading compact-heading"><div><p class="eyebrow">SERVICE SETTINGS</p><h1 id="runtime-configs-heading">服务配置</h1><p class="heading-note">模型连接供新任务使用；并发额度在当前实例平滑调整。查看发布记录与各实例应用状态。</p></div></div>
+          <form id="runtime-config-access" class="filter-bar">
+            <label><span>配置管理密钥</span><input id="config-admin-key" type="password" autocomplete="off" placeholder="独立配置管理密钥" required /></label>
+            <button class="table-action" type="submit">连接配置管理</button>
+            <span class="surface-meta">仅保存在当前浏览器会话</span>
+          </form>
+          <p id="config-feedback" role="status" aria-live="polite" class="config-feedback">请输入配置管理密钥后加载。</p>
+          <div id="runtime-config-workspace" hidden>
+            <div class="filter-bar">
+              <label><span>服务</span><select id="config-service"><option value="image-analysis">图像分析</option><option value="content-analysis">内容分析</option></select></label>
+              <label><span>配置分组</span><select id="config-category"><option value="model_connection">模型连接</option><option value="performance">并发性能</option></select></label>
+              <span id="config-current-version" class="surface-meta"></span>
+            </div>
+            <div class="config-layout">
+              <section class="surface config-editor">
+                <div class="surface-heading"><h2>编辑配置</h2><span class="surface-meta">服务默认 · GLOBAL</span></div>
+                <p id="config-effect" class="heading-note"></p>
+                <form id="runtime-config-form" class="config-form">
+                  <div id="config-fields"></div>
+                  <div id="config-secret-fields">
+                    <label><span>API Key 操作</span><select id="config-key-action"><option value="keep">保持当前密钥</option><option value="replace">替换密钥</option></select></label>
+                    <label id="config-key-label" hidden><span>新的 API Key</span><input id="config-new-key" type="password" autocomplete="new-password" /></label>
+                    <p id="config-key-status" class="surface-meta"></p>
+                  </div>
+                  <div id="config-models"></div>
+                  <label><span>变更原因</span><input id="config-reason" maxlength="512" required placeholder="例如：切换到客户部署模型" /></label>
+                  <button class="table-action" id="config-save" type="submit">校验并保存草稿</button>
+                </form>
+                <div id="config-review" class="config-review" hidden>
+                  <h3>待发布变更</h3><div id="config-diff"></div>
+                  <p id="config-review-note" class="surface-meta"></p>
+                  <button id="config-publish" class="primary-button" type="button">发布此草稿</button>
+                </div>
+              </section>
+              <div class="config-side">
+                <section class="surface"><div class="surface-heading"><h2>实例应用状态</h2><button id="config-refresh-status" type="button" class="text-link">刷新</button></div><div id="config-instances" class="config-instance-list"></div><p id="config-instance-note" class="surface-meta config-padding"></p></section>
+                <section class="surface"><div class="surface-heading"><h2>版本记录</h2></div><div id="config-history" class="config-history"></div></section>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
-    <script src="/admin/app.js?v=20261008-1" defer></script>
+    <script src="/admin/app.js?v=20261012-2" defer></script>
+    <script src="/admin/runtime-configs.js?v=20261016-1" defer></script>
   </body>
 </html>

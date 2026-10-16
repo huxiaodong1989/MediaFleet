@@ -11,6 +11,9 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
@@ -38,6 +41,7 @@ from services.control_center.api.legacy_routes.stream import (
 )
 from services.control_center.api.legacy_routes.video import router as legacy_video_router
 from services.control_center.api.image_prompts import router as image_prompt_router
+from services.control_center.api.runtime_configs import router as runtime_config_router
 from services.control_center.application import (
     ControlCenterRuntime,
     build_control_center_runtime,
@@ -59,6 +63,7 @@ SERVICE_INFO = ServiceInfo(
 ADMIN_UI_DIR = Path(__file__).resolve().parent / "admin_ui"
 
 RuntimeFactory = Callable[[], ControlCenterRuntime]
+LOGGER = logging.getLogger(__name__)
 
 
 def create_control_center_app(
@@ -86,6 +91,21 @@ def create_control_center_app(
     application = create_service_app(SERVICE_INFO, lifespan=lifespan)
     application.include_router(admin_router)
     application.include_router(image_prompt_router)
+    application.include_router(runtime_config_router)
+
+    @application.exception_handler(RequestValidationError)
+    async def safe_config_validation(request, exc):
+        if request.url.path == "/api/v1/tasks/class-evaluation":
+            LOGGER.warning(
+                "AI评课请求参数校验失败: fields=%s",
+                [".".join(str(part) for part in error["loc"]) for error in exc.errors()],
+            )
+        if request.url.path == "/api/v1/tasks/class-evaluation" or request.url.path.startswith("/api/v1/admin/runtime-configs"):
+            return JSONResponse(status_code=422, content={"detail": [
+                {key: error[key] for key in ("loc", "msg", "type")}
+                for error in exc.errors()
+            ]})
+        return await request_validation_exception_handler(request, exc)
     application.include_router(node_heartbeat_router)
     application.include_router(node_selection_router)
     application.include_router(recording_command_router)
@@ -122,11 +142,12 @@ app = create_control_center_app()
 
 
 def _configure_logging() -> None:
-    """让本地脚本和生产入口都能看到调用中心业务处理日志。"""
+    """进程启动时统一使用纯文本日志，避免终端宽度强制折行。"""
 
     logging.basicConfig(
         level=os.getenv("SERVICE_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        force=True,
     )
     configure_third_party_loggers()
 

@@ -34,18 +34,16 @@ class ImageAnalysisTaskConsumer(PikaTaskConsumer):
             return
         if isinstance(error, TaskBusyError):
             forward = partial(self._retry, message, increment_attempt=False)
+            LOGGER.info("图像任务执行租约冲突，延迟重新检查: task_id=%s", message.task_id)
         elif (
             isinstance(error, TaskPermanentError)
             or message.attempt + 1 >= message.max_attempts
         ):
             forward = partial(self._dead_letter, message)
+            LOGGER.error("图像课堂处理最终失败，转入死信: task_id=%s, error_type=%s", message.task_id, type(error).__name__)
         else:
             forward = partial(self._retry, message, increment_attempt=True)
-        LOGGER.warning(
-            "图像课堂处理待重试或死信: task_id=%s, error_type=%s",
-            message.task_id,
-            type(error).__name__,
-        )
+            LOGGER.warning("图像课堂处理失败，进入延迟重试: task_id=%s, error_type=%s, next_attempt=%s", message.task_id, type(error).__name__, message.attempt + 1)
         self._forward_or_requeue(channel, delivery_tag, forward)
 
     def _run_handler(

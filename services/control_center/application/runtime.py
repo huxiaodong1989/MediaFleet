@@ -24,14 +24,17 @@ from media_platform.application import (
     TaskQueryService,
 )
 from media_platform.application.content_prompt_service import PromptManagementService
+from media_platform.infrastructure.runtime_config import RuntimeConfigStore
+from media_platform.application.analysis_config import AnalysisConfigReader, DatabaseImagePromptPolicy
+from services.control_center.application.runtime_config_service import RuntimeConfigManagementService
 from media_platform.application.image_prompt_service import (
     ImagePromptManagementService,
-    ImagePromptPolicy,
 )
 from services.control_center.application.image_analysis_intake_service import (
     ImageAnalysisIntakeService,
 )
 from media_platform.contracts.task import TaskDeliveryChannel
+from media_platform.contracts.image_analysis import IMAGE_TASK_TYPE
 from media_platform.contracts.topology import (
     CONTENT_ANALYSIS_TASK_EXCHANGE,
     IMAGE_ANALYSIS_TASK_EXCHANGE,
@@ -95,6 +98,7 @@ class ControlCenterRuntime:
     image_intake_enabled: bool = False
     content_evaluation_query_service: ContentEvaluationQueryService | None = None
     admin_service: AdminService | None = None
+    runtime_config_service: RuntimeConfigManagementService | None = None
     event_consumer: PikaMediaEventConsumer | None = None
     event_consumer_enabled: bool = False
     event_reconnect_delay_seconds: float = 5.0
@@ -396,28 +400,35 @@ def build_control_center_runtime() -> ControlCenterRuntime:
         ),
         callback_handler=event_handler,
     )
-    content_prompt_service = PromptManagementService(SessionLocal)
+    config_store = RuntimeConfigStore(SessionLocal)
+    runtime_config_service = RuntimeConfigManagementService(config_store)
+    if os.getenv("CONFIG_ADMIN_API_KEY") and os.getenv("CONFIG_ADMIN_API_KEY") == settings.API_KEY:
+        raise ValueError("配置管理密钥必须与业务API密钥不同")
+    content_reader = AnalysisConfigReader(config_store, "content-analysis")
+
+    def prepare_task_params(session, command, params):
+        if command.task_type == "content.class_evaluation":
+            if command.delivery_channel != TaskDeliveryChannel.CONTENT_ANALYSIS:
+                raise ValueError("内容分析任务必须使用专用接单接口")
+            return content_reader.prepare(session, command.school_code, params)
+        if command.task_type == IMAGE_TASK_TYPE and command.delivery_channel != TaskDeliveryChannel.IMAGE_ANALYSIS:
+            raise ValueError("图像分析任务必须使用专用接单接口")
+        return params
+
+    task_service.params_preparer = prepare_task_params
+    content_prompt_service = PromptManagementService(SessionLocal, runtime_config_service.content_publication_policy)
     image_models = frozenset(
         item.strip()
         for item in os.getenv("IMAGE_ANALYSIS_ALLOWED_MODELS", "").split(",")
         if item.strip()
     )
-    image_prompt_service = (
-        ImagePromptManagementService(
-            SessionLocal,
-            ImagePromptPolicy(
-                allowed_models=image_models,
-                output_schema_versions=frozenset({"image-metrics.v1"}),
-                metric_definition_versions=frozenset({"classroom-behavior.v1"}),
-            ),
-        )
-        if image_models
-        else None
+    image_prompt_service = ImagePromptManagementService(
+        SessionLocal,
+        DatabaseImagePromptPolicy(config_store, image_models),
     )
-    image_intake_service = (
-        ImageAnalysisIntakeService(task_service, image_prompt_service.policy)
-        if image_prompt_service is not None
-        else None
+    image_intake_service = ImageAnalysisIntakeService(
+        task_service, image_prompt_service.policy,
+        AnalysisConfigReader(config_store, "image-analysis"),
     )
     event_routing_keys = tuple(
         item.strip()
@@ -471,6 +482,7 @@ def build_control_center_runtime() -> ControlCenterRuntime:
         command_publisher=command_publisher,
         api_key=settings.API_KEY,
         admin_service=admin_service,
+        runtime_config_service=runtime_config_service,
         content_prompt_service=content_prompt_service,
         image_prompt_service=image_prompt_service,
         image_intake_service=image_intake_service,

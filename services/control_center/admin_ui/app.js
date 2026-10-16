@@ -14,7 +14,7 @@
     selectedImagePrompt: null,
     imagePromptDraftContent: null,
   };
-  const viewTitles = { overview: "运行总览", tasks: "任务中心", nodes: "节点资源", bindings: "流绑定", prompts: "AI评课提示词", "image-prompts": "图像分析提示词" };
+  const viewTitles = { overview: "运行总览", tasks: "任务中心", nodes: "节点资源", bindings: "流绑定", prompts: "AI评课提示词", "image-prompts": "图像分析提示词", "runtime-configs": "服务配置" };
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => Array.from(document.querySelectorAll(selector));
   const promptEditorSelectors = [
@@ -115,6 +115,7 @@
     if (view === "bindings") loadBindings();
     if (view === "prompts") loadPrompts();
     if (view === "image-prompts") loadImagePrompts();
+    if (view === "runtime-configs") window.runtimeConfigPage?.load();
   }
 
   function renderOverview(data) {

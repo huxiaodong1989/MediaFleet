@@ -121,6 +121,32 @@ class ClassEvaluationRequest(ContentModel):
         return data
 
 
+class ClassEvaluationTaskRequest(ContentModel):
+    """兼容原评课接口的 taskData 包装。"""
+
+    task_data: ClassEvaluationRequest = Field(
+        validation_alias=AliasChoices("taskData", "task_data"),
+        serialization_alias="taskData",
+    )
+    priority: int = 0
+    timeout_seconds: int | None = Field(
+        1800,
+        validation_alias=AliasChoices("timeoutSeconds", "timeout_seconds"),
+        serialization_alias="timeoutSeconds",
+    )
+    callback_url: str | None = Field(
+        None,
+        validation_alias=AliasChoices("callbackUrl", "callback_url"),
+        serialization_alias="callbackUrl",
+    )
+    metadata: dict[str, Any] | None = None
+    quest_type: int | None = Field(
+        None,
+        validation_alias=AliasChoices("questType", "quest_type"),
+        serialization_alias="questType",
+    )
+
+
 class ClassEvaluationCreateResponse(BaseModel):
     taskId: str
     status: str
@@ -194,6 +220,7 @@ __all__ = [
     "ClassEvaluationCreateResponse",
     "ClassEvaluationRecordResponse",
     "ClassEvaluationRequest",
+    "ClassEvaluationTaskRequest",
     "FileCollection",
     "FileMetadata",
     "FileType",

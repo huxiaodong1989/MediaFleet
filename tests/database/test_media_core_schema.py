@@ -50,7 +50,8 @@ IMAGE_ANALYSIS_TABLES = {
     "image_analysis_task_notification",
     "image_analysis_frame",
 }
-APPLICATION_TABLES = CORE_TABLES | CONTENT_ANALYSIS_TABLES | IMAGE_ANALYSIS_TABLES
+RUNTIME_CONFIG_TABLES = {"service_config", "service_config_version"}
+APPLICATION_TABLES = CORE_TABLES | CONTENT_ANALYSIS_TABLES | IMAGE_ANALYSIS_TABLES | RUNTIME_CONFIG_TABLES
 AUDIT_COLUMNS = {"cjr", "xgr", "xxm", "cjsj", "xgsj"}
 NODE_AUDIT_COLUMNS = {"cjr", "xgr", "cjsj", "xgsj"}
 
@@ -135,7 +136,7 @@ def test_alembic_has_clean_baseline_and_image_analysis_revisions():
     config = Config(str(ROOT / "alembic.ini"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20261012_0003"]
+    assert scripts.get_heads() == ["20261016_0004"]
     revision = scripts.get_revision("20260928_0001")
     assert revision is not None
     assert revision.down_revision is None
@@ -145,6 +146,8 @@ def test_alembic_has_clean_baseline_and_image_analysis_revisions():
     terminal_revision = scripts.get_revision("20261012_0003")
     assert terminal_revision is not None
     assert terminal_revision.down_revision == "20261009_0002"
+    config_revision = scripts.get_revision("20261016_0004")
+    assert config_revision.down_revision == "20261012_0003"
 
 
 def test_alembic_uses_project_version_table():

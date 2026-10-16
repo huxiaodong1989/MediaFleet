@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 from threading import Event
 
@@ -67,6 +67,7 @@ class RabbitMQConsumerConfig:
     socket_timeout: int = 10
     prefetch_count: int = 1
     retry_delay_milliseconds: int = 5_000
+    consumer_timeout_milliseconds: int | None = None
 
     def __post_init__(self) -> None:
         normalized_rabbitmq_name(self.queue_name, field_name="queue_name")
@@ -78,6 +79,8 @@ class RabbitMQConsumerConfig:
             raise ValueError("prefetch_count 必须大于0")
         if self.retry_delay_milliseconds < 1:
             raise ValueError("retry_delay_milliseconds 必须大于0")
+        if self.consumer_timeout_milliseconds is not None and self.consumer_timeout_milliseconds < 1_000:
+            raise ValueError("consumer_timeout_milliseconds 必须大于等于1000")
 
 
 class PikaTaskConsumer:
@@ -115,6 +118,21 @@ class PikaTaskConsumer:
             socket_timeout=self.config.socket_timeout,
         )
 
+    def update_prefetch(self, count: int) -> None:
+        """持久进程配置供重连使用，在线channel只能由原I/O线程更新。"""
+        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            raise ValueError("prefetch必须是正整数")
+        self.config = replace(self.config, prefetch_count=count)
+        connection, channel = self._connection, self._channel
+        if connection is None or connection.is_closed or channel is None or channel.is_closed:
+            return
+
+        def apply():
+            if self._connection is connection and self._channel is channel and not channel.is_closed:
+                channel.basic_qos(prefetch_count=self.config.prefetch_count, global_qos=True)
+
+        connection.add_callback_threadsafe(apply)
+
     def connect(self) -> None:
         """建立消费连接并声明共享主队列、重试队列和死信队列。"""
 
@@ -123,7 +141,10 @@ class PikaTaskConsumer:
         self._channel = self._connection.channel()
         self._declare_topology()
         self._channel.confirm_delivery()
-        self._channel.basic_qos(prefetch_count=self.config.prefetch_count)
+        # 每个通道只有一个业务消费者。RabbitMQ 的非 global QoS 只作用于后续
+        # 注册的消费者；热调整必须使用通道额度，且不能留下旧的消费者额度作上限。
+        self._channel.basic_qos(prefetch_count=0, global_qos=False)
+        self._channel.basic_qos(prefetch_count=self.config.prefetch_count, global_qos=True)
 
     def _declare_topology(self) -> None:
         """以幂等方式声明共享 Worker 队列需要的可靠投递拓扑。"""
@@ -146,15 +167,14 @@ class PikaTaskConsumer:
             exchange_type="direct",
             durable=True,
         )
-        channel.queue_declare(
-            queue=queue_name,
-            durable=True,
-            arguments={
-                "x-dead-letter-exchange": self.config.dead_letter_exchange,
-                "x-dead-letter-routing-key": queue_name,
-                "x-max-priority": 255,
-            },
-        )
+        queue_arguments = {
+            "x-dead-letter-exchange": self.config.dead_letter_exchange,
+            "x-dead-letter-routing-key": queue_name,
+            "x-max-priority": 255,
+        }
+        if self.config.consumer_timeout_milliseconds is not None:
+            queue_arguments["x-consumer-timeout"] = self.config.consumer_timeout_milliseconds
+        channel.queue_declare(queue=queue_name, durable=True, arguments=queue_arguments)
         channel.queue_declare(
             queue=retry_queue,
             durable=True,
