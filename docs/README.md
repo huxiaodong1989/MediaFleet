@@ -24,6 +24,8 @@
 ## 开发与运维
 
 - [扩展开发指南](development/extending-mediafleet.md)
+- [SDK、CLI 与 MCP 实施方案](development/sdk-cli-mcp-plan.md)
+- [Python SDK 使用说明](../packages/mediafleet-sdk/README.md)
 - [Docker Compose 部署](deployment/docker-compose.md)
 - [GitHub 仓库与分支保护清单](deployment/github.md)
 - [配置与密钥管理](security/configuration-and-secrets.md)
