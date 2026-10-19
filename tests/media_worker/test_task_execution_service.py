@@ -61,8 +61,11 @@ class ArtifactProcessor:
 class SlowProcessor:
     """执行时间超过初始租约，验证 Worker 会自动续租。"""
 
+    def __init__(self, delay_seconds=0.25):
+        self.delay_seconds = delay_seconds
+
     def process(self, message):
-        time.sleep(0.25)
+        time.sleep(self.delay_seconds)
         return ProcessorResult(payload={"slow": True})
 
 
@@ -436,14 +439,14 @@ def test_long_running_processor_renews_execution_lease(tmp_path):
             session.add(_task())
 
         registry = TaskProcessorRegistry()
-        registry.register("video.cover.extract", SlowProcessor())
+        registry.register("video.cover.extract", SlowProcessor(delay_seconds=1.5))
         service = TaskExecutionService(
             SessionLocal,
             registry,
             "worker-a",
             execution_timeout=timedelta(seconds=1),
-            lease_timeout=timedelta(milliseconds=100),
-            lease_renew_interval=timedelta(milliseconds=20),
+            lease_timeout=timedelta(seconds=1),
+            lease_renew_interval=timedelta(milliseconds=100),
             callback_retry_interval_seconds=0,
             callback_sender=RecordingCallbackSender(),
         )

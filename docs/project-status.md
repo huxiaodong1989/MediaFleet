@@ -218,6 +218,9 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
 - Pydantic V2 严格弃用检查下全仓验证为 `701 passed, 3 skipped`，测试将
   `PydanticDeprecatedSince20` 提升为错误；旧录制请求校验、OpenAPI 示例和毫秒时间序列化均有
   回归覆盖。
+- 稳定 Worker 租约续租回归测试：处理器仍运行超过初始租约，首次续租窗口由 100 毫秒扩大到
+  1 秒，避免 Python 3.10 CI 高负载时后台线程尚未获得调度便被误判为失去租约；生产租约条件
+  与过期写入保护保持不变。专项测试连续 6 次通过，全仓验证为 `701 passed, 3 skipped`。
 
 ## 剩余风险
 
