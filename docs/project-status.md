@@ -233,10 +233,20 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   `uv lock --check`、17 份 Compose 配置、Alembic `base -> head -> base` 往返和
   `git diff --check` 通过。
 - MCP 受控写工具专项验证为 `34 passed`，覆盖默认只读、逐项允许、显式确认、全部 7 个 SDK
-  调用、响应脱敏、校验错误不回显敏感输入、64 KiB 输入上限、权限拒绝、超时不重试、稳定幂等键重复调用和真实 stdio
-  子进程协议链路；Python 3.10、3.11、3.12 均通过。冲突解决后的全仓测试继续为
+  调用、响应脱敏、校验错误不回显敏感输入、64 KiB 输入上限、权限拒绝、超时不重试、
+  稳定幂等键重复调用和真实 stdio 子进程协议链路；Python 3.10、3.11、3.12 均通过。冲突
+  解决后的全仓测试继续为
   `738 passed, 3 skipped`，SDK/MCP sdist 与 Wheel 构建及干净环境成对安装通过，依赖审计未发现
-  已知漏洞；Gitleaks 对完整 40 个提交历史扫描未发现泄漏。
+  已知漏洞；Gitleaks 对完整 Git 历史扫描未发现泄漏。
+- 使用独立 Compose 项目、网络、数据卷和宿主机端口完成本地 SDK/CLI/MCP 真实联调；当前分支
+  控制中心和 CPU Worker 镜像构建成功，隔离 MySQL 8.4、RabbitMQ、MinIO 和测试视频服务健康。
+  SDK、CLI、允许列表 MCP 分别创建一项 `video.cover.extract` 任务，均由 CPU Worker 完成，回调
+  返回 204，MySQL 持久化终态与产物，MinIO 中存在对应 3 个封面对象；重启修复后的控制中心后
+  第 4 项任务继续完成。只读凭据执行写操作返回 403，可信审计同时记录成功和失败结果。
+- 修复控制中心队列总览的 RabbitMQ Channel 污染：可选队列 passive declare 返回 404 后，后续
+  队列改用独立 Channel 探测。专项测试 `6 passed`，容器内复测确认媒体 Worker 队列仍为
+  `AVAILABLE`，三个未部署的可选队列各自返回准确的 404。本轮全仓验证为
+  `739 passed, 3 skipped`，Ruff、Compileall、`uv lock --check` 和 `git diff --check` 通过。
 
 ## 剩余风险
 
@@ -249,6 +259,9 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   主机验证。
 - 当前冒烟使用临时数据库、消息队列和 S3 兼容服务；长时间运行、断网恢复、消息重复投递、
   数据库故障切换和生产对象存储兼容性仍需在部门环境验证。
+- 当前时间字段仍混用数据库服务器默认时间和应用 `APP_TIMEZONE` 的无时区时间。本地隔离 MySQL
+  使用 UTC、应用使用 Asia/Shanghai 时，实测同一任务的 `created_at` 与 `started_at` 相差 8 小时；
+  需要先确定统一采用 UTC 还是业务本地时间，再迁移写入、序列化和既有数据。
 - 部分旧兼容 API 和模型尚未迁移到统一的新应用服务。
 - 容器仍以 root 用户运行，尚未增加只读文件系统、Linux capability 限制和镜像安全扫描。
 - 回调、下载和流媒体 URL 尚未建立按用途配置的主机或 CIDR 允许列表。

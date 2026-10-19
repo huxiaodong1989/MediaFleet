@@ -153,10 +153,14 @@ class RabbitQueueInspector:
                     socket_timeout=self.config.socket_timeout,
                 )
             )
-            channel = connection.channel()
             results: list[AdminQueueSummary] = []
             for queue_name in queue_names:
+                channel = None
                 try:
+                    # RabbitMQ 会在 passive declare 发现队列不存在时关闭当前
+                    # Channel。每个队列使用独立 Channel，避免一个可选队列缺失
+                    # 导致后续健康队列都被误报为 Channel 已关闭。
+                    channel = connection.channel()
                     declared = channel.queue_declare(queue=queue_name, passive=True)
                     results.append(
                         AdminQueueSummary(
@@ -176,6 +180,12 @@ class RabbitQueueInspector:
                             error_message=f"{type(exc).__name__}: {exc!r}",
                         )
                     )
+                finally:
+                    if channel is not None and not channel.is_closed:
+                        try:
+                            channel.close()
+                        except pika.exceptions.AMQPError:
+                            pass
             return tuple(results)
         except Exception as exc:  # noqa: BLE001 - management page remains readable
             message = f"{type(exc).__name__}: {exc!r}"
