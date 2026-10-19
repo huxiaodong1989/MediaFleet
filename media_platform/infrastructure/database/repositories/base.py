@@ -25,7 +25,7 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         if isinstance(obj_in, dict):
             obj_in_data = obj_in
         else:
-            obj_in_data = obj_in.dict()
+            obj_in_data = obj_in.model_dump()
 
         db_obj = self.model(**obj_in_data)
         db.add(db_obj)
@@ -69,7 +69,7 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         if isinstance(obj_in, dict):
             update_data = obj_in
         else:
-            update_data = obj_in.dict(exclude_unset=True)
+            update_data = obj_in.model_dump(exclude_unset=True)
 
         for field in obj_data:
             if field in update_data:

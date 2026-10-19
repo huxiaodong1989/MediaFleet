@@ -1,5 +1,5 @@
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator, field_serializer
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_serializer, field_validator
 from datetime import datetime
 from media_platform.domain.task.legacy_models import TaskStatus, TaskType
 
@@ -50,10 +50,12 @@ class StreamRecordRequest(BaseModel):
   }
 }""")
 
-    @validator('end_time')
-    def validate_end_time(cls, v, values):
+    @field_validator('end_time')
+    @classmethod
+    def validate_end_time(cls, v, info: ValidationInfo):
         """验证结束时间必须晚于开始时间"""
-        if v and 'start_time' in values and values['start_time'] and v <= values['start_time']:
+        start_time = info.data.get('start_time')
+        if v and start_time and v <= start_time:
             raise ValueError('结束时间必须晚于开始时间')
         return v
 
@@ -66,20 +68,21 @@ class StreamRecordRequest(BaseModel):
 
 class StreamRecordResponse(BaseModel):
     """直播流录制响应"""
-    task_id: str = Field(..., description="任务ID")
-    status: str = Field(..., description="任务状态: pending, processing, completed, failed")
-    message: Optional[str] = Field(None, description="状态说明")
-    created_at: datetime = Field(default_factory=datetime.now, description="创建时间，格式：YYYY-MM-DD HH:MM:SS.fff")
-
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "task_id": "task_12345678",
                 "status": "pending",
                 "message": "录制任务已创建",
-                "created_at": "2023-05-10 14:30:00.000"
+                "created_at": "2023-05-10 14:30:00.000",
             }
         }
+    )
+
+    task_id: str = Field(..., description="任务ID")
+    status: str = Field(..., description="任务状态: pending, processing, completed, failed")
+    message: Optional[str] = Field(None, description="状态说明")
+    created_at: datetime = Field(default_factory=datetime.now, description="创建时间，格式：YYYY-MM-DD HH:MM:SS.fff")
 
     @field_serializer('created_at')
     def serialize_datetime(self, dt: datetime) -> str:
@@ -88,6 +91,26 @@ class StreamRecordResponse(BaseModel):
 
 class StreamRecordStatusResponse(BaseModel):
     """直播流录制状态响应"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "task_id": "task_12345678",
+                "status": "completed",
+                "progress": 100.0,
+                "message": "录制任务已完成",
+                "result_url": "https://example.com/result.mp4",
+                "start_time": "2023-05-10 14:30:00.000",
+                "end_time": "2023-05-10 14:35:00.000",
+                "updated_at": "2023-05-10 14:35:00.000",
+                "extra_params": {
+                    "audio_url": "https://example.com/audio.mp3",
+                    "cover_url": "https://example.com/cover.jpg",
+                    "cover_file_id": "cover_12345678",
+                },
+            }
+        }
+    )
+
     task_id: str = Field(..., description="任务ID")
     status: str = Field(..., description="任务状态: pending, processing, completed, failed")
     progress: float = Field(0.0, description="任务进度，0-100")
@@ -115,26 +138,6 @@ class StreamRecordStatusResponse(BaseModel):
         if dt is None:
             return None
         return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-
-    class Config:
-        schema_extra = {
-            "example": {
-                "task_id": "task_12345678",
-                "status": "completed",
-                "progress": 100.0,
-                "message": "录制任务已完成",
-                "result_url": "https://example.com/result.mp4",
-                "start_time": "2023-05-10 14:30:00.000",
-                "end_time": "2023-05-10 14:35:00.000",
-                "updated_at": "2023-05-10 14:35:00.000",
-                "extra_params": {
-                    "audio_url": "https://example.com/audio.mp3",
-                    "cover_url": "https://example.com/cover.jpg",
-                    "cover_file_id": "cover_12345678"
-                }
-            }
-        }
-
 
 class StreamProcessRequest(BaseModel):
     operations:TaskType=Field(TaskType.NONE,description="任务类型")

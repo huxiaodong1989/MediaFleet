@@ -43,8 +43,12 @@ from services.control_center.api.legacy_schemas.recogDto import RecogProcessRequ
 from services.control_center.api.legacy_schemas.stream import (
     StreamProcessRequest,
     StreamRecordRequest,
+    StreamRecordResponse,
 )
-from services.control_center.api.legacy_schemas.videoDto import VideoProcessRequest
+from services.control_center.api.legacy_schemas.videoDto import (
+    GetAudioInVideoRequest,
+    VideoProcessRequest,
+)
 
 
 LEGACY_API_KEY = "test-only-api-key"
@@ -253,6 +257,29 @@ def test_original_business_request_fields_are_unchanged():
         actual_fields = set(model.model_fields)
         assert actual_fields == fields
         assert actual_fields.isdisjoint(forbidden_fields)
+
+
+@pytest.mark.parametrize("model", [StreamRecordRequest, GetAudioInVideoRequest])
+def test_legacy_record_requests_reject_end_time_before_start_time(model):
+    with pytest.raises(ValueError, match="结束时间必须晚于开始时间"):
+        model(
+            app="live",
+            stream_id="camera-1",
+            start_time="2026-10-19 10:00:00.000",
+            end_time="2026-10-19 09:59:59.000",
+        )
+
+
+def test_legacy_record_response_keeps_schema_example_and_time_format():
+    schema = StreamRecordResponse.model_json_schema()
+    response = StreamRecordResponse(
+        task_id="task-1",
+        status="pending",
+        created_at=datetime(2026, 10, 19, 10, 11, 12, 345000),
+    )
+
+    assert schema["example"]["task_id"] == "task_12345678"
+    assert response.model_dump(mode="json")["created_at"] == "2026-10-19 10:11:12.345"
 
 
 def test_original_video_process_payload_creates_new_media_task(tmp_path):

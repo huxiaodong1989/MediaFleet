@@ -1,5 +1,5 @@
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator, field_serializer
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field, ValidationInfo, field_serializer, field_validator
 from datetime import datetime
 from media_platform.domain.task.legacy_models import TaskStatus, TaskType
 
@@ -14,10 +14,12 @@ class GetAudioInVideoRequest(BaseModel):
     callback_url: Optional[str] = Field(None, description="任务完成回调地址")
     extra_params: Optional[Dict[str, Any]] = Field(None, description="额外参数")
 
-    @validator('end_time')
-    def validate_end_time(cls, v, values):
+    @field_validator('end_time')
+    @classmethod
+    def validate_end_time(cls, v, info: ValidationInfo):
         """验证结束时间必须晚于开始时间"""
-        if v and 'start_time' in values and values['start_time'] and v <= values['start_time']:
+        start_time = info.data.get('start_time')
+        if v and start_time and v <= start_time:
             raise ValueError('结束时间必须晚于开始时间')
         return v
 

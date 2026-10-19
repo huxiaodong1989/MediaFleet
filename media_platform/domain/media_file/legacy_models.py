@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 
 class MediaFileBase(BaseModel):
@@ -29,9 +29,8 @@ class MediaFileUpdate(BaseModel):
 
 class MediaFile(MediaFileBase):
     """媒体文件完整模型"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str = Field(..., description="文件ID")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: Optional[datetime] = Field(None, description="更新时间")
-
-    class Config:
-        from_attributes = True

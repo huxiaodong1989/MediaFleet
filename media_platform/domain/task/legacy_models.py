@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from media_platform.common.time import app_now
 
@@ -46,6 +46,8 @@ class TaskStatus(str, Enum):
 class Task(BaseModel):
     """任务基本模型"""
 
+    model_config = ConfigDict(from_attributes=True)
+
     task_id: str = Field(..., description="任务ID")
     task_type: TaskType = Field(..., description="任务类型")
     status: TaskStatus = Field(TaskStatus.PENDING, description="任务状态")
@@ -64,10 +66,6 @@ class Task(BaseModel):
     retry_count: int = Field(0, description="重试次数")
     max_retries: int = Field(3, description="最大重试次数")
     node_id: str = Field(0, description="节点ID")
-
-    class Config:
-        from_attributes = True
-
 
 class TaskCreate(BaseModel):
     """任务创建模型"""

@@ -108,6 +108,8 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   创建人或更新人；最小权限映射覆盖 `task:write`、`recording:write` 和 `admin:write`。
 - 控制中心新增 `CONTROL_CENTER_BOOTSTRAP_API_KEY_ENABLED` 类型化开关；关闭共享引导密钥前
   必须在 MySQL 中存在有效的 `admin:write` 管理凭据，否则拒绝启动，避免管理入口锁死。
+- 旧任务、媒体文件和录制接口 Schema 已迁移到 Pydantic V2 的 `ConfigDict`、
+  `field_validator` 和 `model_dump`，原有字段、OpenAPI 示例与毫秒时间格式保持兼容。
 
 ## 验证
 
@@ -213,14 +215,15 @@ MediaFleet `0.1.0` 已迁移到个人 GitHub Public 仓库
   管理凭据放行，以及只读、过期、吊销和调用方停用等防锁死场景。
 - 本轮最新全量验证为 `698 passed, 3 skipped`；根包、SDK、CLI 和 MCP 的 sdist/Wheel 构建、
   17 份 Compose 配置、Compileall、Ruff、`uv lock --check` 和 `git diff --check` 均通过。
+- Pydantic V2 严格弃用检查下全仓验证为 `701 passed, 3 skipped`，测试将
+  `PydanticDeprecatedSince20` 提升为错误；旧录制请求校验、OpenAPI 示例和毫秒时间序列化均有
+  回归覆盖。
 
 ## 剩余风险
 
 - 新增运行配置表须在服务升级前由单个迁移执行者部署。首次配置导入、现有 RabbitMQ
   队列 ACK 超时策略、在线实例热更新回执和任务锁版仍需在部门环境验证；配置加密密钥
   必须在控制中心及两个分析服务一致并由部署平台保管。
-
-- 兼容 Schema 仍会产生 Pydantic V2 弃用警告，应在 Pydantic V3 前完成现代化。
 - 最新 Starlette 测试客户端提示 `httpx` 集成将弃用并迁移到 `httpx2`。
 - 可选模型、FFmpeg 构建、Ultralytics 部署和厂商数据库驱动需要按部署环境单独审查许可证。
 - GPU Worker 实际 CUDA 推理仍需在有 NVIDIA Container Toolkit 和兼容 GPU 的 Linux
