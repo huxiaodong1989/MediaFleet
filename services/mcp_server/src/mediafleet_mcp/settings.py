@@ -7,6 +7,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+WRITE_TOOL_NAMES = frozenset(
+    {
+        "mediafleet_create_task",
+        "mediafleet_retry_task",
+        "mediafleet_retry_task_callback",
+        "mediafleet_create_binding",
+        "mediafleet_release_binding",
+        "mediafleet_start_recording",
+        "mediafleet_stop_recording",
+    }
+)
+
 
 class MCPConfigurationError(Exception):
     """MCP 运行配置无效。"""
@@ -18,6 +30,7 @@ class MCPSettings:
     api_key: str
     verify: bool | str = True
     timeout: float = 30.0
+    write_tools: frozenset[str] = frozenset()
 
     @classmethod
     def from_env(cls) -> MCPSettings:
@@ -59,13 +72,29 @@ class MCPSettings:
             api_key=api_key,
             verify=verify,
             timeout=timeout,
+            write_tools=cls.write_tools_from_env(),
         )
+
+    @staticmethod
+    def write_tools_from_env() -> frozenset[str]:
+        raw_value = os.getenv("MEDIAFLEET_MCP_WRITE_TOOLS", "")
+        values = frozenset(
+            item.strip() for item in raw_value.split(",") if item.strip()
+        )
+        unknown = values - WRITE_TOOL_NAMES
+        if unknown:
+            raise MCPConfigurationError(
+                "MEDIAFLEET_MCP_WRITE_TOOLS 包含未知工具: "
+                + ", ".join(sorted(unknown))
+            )
+        return values
 
     def __repr__(self) -> str:
         return (
             "MCPSettings("
             f"base_url={self.base_url!r}, api_key='********', "
-            f"verify={self.verify!r}, timeout={self.timeout!r})"
+            f"verify={self.verify!r}, timeout={self.timeout!r}, "
+            f"write_tools={sorted(self.write_tools)!r})"
         )
 
 
@@ -77,4 +106,4 @@ def _required(name: str) -> str:
     return normalized
 
 
-__all__ = ["MCPConfigurationError", "MCPSettings"]
+__all__ = ["MCPConfigurationError", "MCPSettings", "WRITE_TOOL_NAMES"]

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from mediafleet_mcp.settings import MCPConfigurationError, MCPSettings
+from mediafleet_mcp.settings import (
+    MCPConfigurationError,
+    MCPSettings,
+    WRITE_TOOL_NAMES,
+)
 
 
 def test_settings_read_environment_and_redact_repr(tmp_path, monkeypatch):
@@ -19,7 +23,30 @@ def test_settings_read_environment_and_redact_repr(tmp_path, monkeypatch):
     assert settings.api_key == "secret-value"
     assert settings.verify == str(ca_bundle.resolve())
     assert settings.timeout == 12.5
+    assert settings.write_tools == frozenset()
     assert "secret-value" not in repr(settings)
+
+
+def test_settings_parse_explicit_write_tool_allowlist(monkeypatch):
+    monkeypatch.setenv(
+        "MEDIAFLEET_MCP_WRITE_TOOLS",
+        "mediafleet_create_task, mediafleet_stop_recording,mediafleet_create_task",
+    )
+
+    assert MCPSettings.write_tools_from_env() == frozenset(
+        {"mediafleet_create_task", "mediafleet_stop_recording"}
+    )
+    assert MCPSettings.write_tools_from_env() < WRITE_TOOL_NAMES
+
+
+def test_settings_reject_unknown_write_tool(monkeypatch):
+    monkeypatch.setenv(
+        "MEDIAFLEET_MCP_WRITE_TOOLS",
+        "mediafleet_create_task,mediafleet_run_shell",
+    )
+
+    with pytest.raises(MCPConfigurationError, match="mediafleet_run_shell"):
+        MCPSettings.write_tools_from_env()
 
 
 @pytest.mark.parametrize(

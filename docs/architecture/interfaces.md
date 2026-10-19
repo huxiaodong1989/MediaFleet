@@ -10,7 +10,7 @@ flowchart TB
     Console[运维控制台]
     SDK[Python SDK：查询与受控写资源]
     CLI[mediafleet CLI：查询与受控写命令]
-    MCP[MCP Server：8 个只读工具已实现]
+    MCP[MCP Server：8 个只读工具 + 7 个允许列表写工具]
     App[应用服务]
     Ports[仓储 / 消息 / 存储端口]
 
@@ -81,15 +81,18 @@ JSON 文件或标准输入，大小上限为 1 MiB，类型化模型拒绝额外
 
 仓库中的 [`services/mcp_server`](../../services/mcp_server/README.md) 是独立安装包，发行名和
 命令名均为 `mediafleet-mcp`。当前使用官方 Python MCP SDK 2.x 和 stdio 传输，并通过异步
-MediaFleet SDK 提供健康、总览、任务、产物、节点、绑定和录制服务器共 8 个只读工具。
+MediaFleet SDK 提供 8 个只读工具，以及任务创建/重试/回调补发、流绑定创建/释放、录制
+开始/停止共 7 个受控写工具。
 
 工具返回稳定的 `ok/data/error` 结构，列表页大小上限为 100，并区分认证、权限、不存在、
 冲突、限流、超时、基础设施暂时不可用和 SDK 响应契约错误。任务的任意参数和结果会递归
 脱敏与限长；产物不返回签名下载 URL，节点与录制服务器不返回内部管理地址或本地目录。
 
-MCP 进程只从环境读取控制中心地址、API Key、自定义 CA 和超时。当前不提供 Streamable HTTP、
-任意 SQL、Shell、文件系统访问、RabbitMQ 发布或环境变量修改工具。变更工具需要范围化授权、
-稳定幂等键和可信审计记录后再开放。
+MCP 默认只注册只读工具。部署方必须通过 `MEDIAFLEET_MCP_WRITE_TOOLS` 使用完整工具名逐项允许
+写工具；工具调用还必须传入 `confirmed=true`。任务创建要求稳定幂等键，开始录制要求稳定
+任务 ID，SDK 不自动重试写请求。控制中心继续按 `task:write` 或 `recording:write` 授权并记录
+可信审计。MCP 不开放凭据管理、录制服务器状态修改、Streamable HTTP、任意 SQL、Shell、
+文件系统访问、RabbitMQ 发布或环境变量修改工具。
 
 ## 接口演进
 

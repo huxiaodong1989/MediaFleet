@@ -96,7 +96,7 @@ flowchart TB
         Ops[运维控制台]
         SDK[Python SDK]
         CLI[查询与受控写 CLI]
-        MCP[只读 MCP Server]
+        MCP[默认只读 / 允许列表写 MCP Server]
     end
 
     subgraph ControlPlane[控制平面]

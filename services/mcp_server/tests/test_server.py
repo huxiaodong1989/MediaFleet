@@ -3,22 +3,29 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from mcp.server.mcpserver import MCPServer
 
 from mediafleet_mcp import server as server_module
-from mediafleet_mcp.server import server
-from mediafleet_sdk import AuthenticationError
+from mediafleet_mcp.server import register_write_tools, server
+from mediafleet_mcp.settings import WRITE_TOOL_NAMES
+from mediafleet_sdk import AuthenticationError, PermissionDeniedError, TimeoutError
 from mediafleet_sdk.models import (
     AdminOverview,
+    BindingEndpoint,
     BindingPage,
     BindingSummary,
+    CallbackRetryResult,
     NodePage,
     NodeSummary,
     QueueSummary,
+    RecordingCommandResult,
     RecordingServer,
     ServiceHealth,
+    TaskCreateResult,
     TaskDetail,
     TaskFile,
     TaskPage,
+    TaskRetryResult,
     TaskSummary,
 )
 
@@ -170,14 +177,55 @@ class FakeClient:
             list=TaskPage(items=[task], total=1, page=1, page_size=20),
             get=detail,
             list_files=[task_file],
+            create=TaskCreateResult(task_id="task-created", created=True),
+            retry=TaskRetryResult(accepted=True, task=task),
+            retry_callback=CallbackRetryResult(
+                accepted=True,
+                callback_result={
+                    "success": True,
+                    "callback_url": "https://example.invalid/callback?token=secret",
+                },
+            ),
         )
         self.nodes = AsyncResource(
             list=NodePage(items=[node], total=1, page=1, page_size=20)
         )
         self.bindings = AsyncResource(
-            list=BindingPage(items=[binding], total=1, page=1, page_size=20)
+            list=BindingPage(items=[binding], total=1, page=1, page_size=20),
+            create=BindingEndpoint(
+                stream_id="stream-1",
+                api_url="http://zlm.internal.invalid:8080",
+                server_id="zlm-1",
+                ip="10.0.0.8",
+            ),
+            release=BindingEndpoint(
+                stream_id="stream-1",
+                api_url="http://zlm.internal.invalid:8080",
+                server_id="zlm-1",
+                ip="10.0.0.8",
+            ),
         )
         self.recording_servers = AsyncResource(list=[recorder])
+        recording_result = RecordingCommandResult(
+            accepted=True,
+            command="record.start",
+            task_id="recording-task-1",
+            target_node_id="node-id-1",
+            binding_id="binding-1",
+            app="live",
+            stream_id="stream-1",
+            message_id="recording-task-1:record.start",
+            confirmed=True,
+        )
+        self.recordings = AsyncResource(
+            start=recording_result,
+            stop=recording_result.model_copy(
+                update={
+                    "command": "record.stop",
+                    "message_id": "recording-task-1:record.stop",
+                }
+            ),
+        )
 
     async def __aenter__(self):
         return self
@@ -198,7 +246,18 @@ def fake_client(monkeypatch):
     monkeypatch.setattr(server_module, "AsyncMediaFleetClient", factory)
     monkeypatch.setenv("MEDIAFLEET_URL", "https://mediafleet.example.com")
     monkeypatch.setenv("MEDIAFLEET_API_KEY", "test-secret")
+    monkeypatch.setenv(
+        "MEDIAFLEET_MCP_WRITE_TOOLS",
+        ",".join(sorted(WRITE_TOOL_NAMES)),
+    )
     return clients
+
+
+@pytest.fixture
+def write_server():
+    instance = MCPServer(name="mediafleet-write-test", version="0.1.0")
+    register_write_tools(instance, WRITE_TOOL_NAMES)
+    return instance
 
 
 @pytest.mark.asyncio
@@ -209,6 +268,46 @@ async def test_server_exposes_only_eight_read_only_tools():
     assert all(tool.annotations.read_only_hint is True for tool in tools)
     assert all(tool.annotations.destructive_hint is False for tool in tools)
     assert all(tool.annotations.idempotent_hint is True for tool in tools)
+
+
+@pytest.mark.asyncio
+async def test_write_tools_are_registered_only_from_explicit_allowlist():
+    instance = MCPServer(name="mediafleet-write-subset", version="0.1.0")
+    register_write_tools(
+        instance,
+        frozenset({"mediafleet_create_task", "mediafleet_release_binding"}),
+    )
+
+    tools = {tool.name: tool for tool in await instance.list_tools()}
+
+    assert set(tools) == {"mediafleet_create_task", "mediafleet_release_binding"}
+    assert tools["mediafleet_create_task"].annotations.read_only_hint is False
+    assert tools["mediafleet_create_task"].annotations.destructive_hint is False
+    assert tools["mediafleet_create_task"].annotations.idempotent_hint is True
+    assert tools["mediafleet_release_binding"].annotations.destructive_hint is True
+    assert "mediafleet_update_recording_server_status" not in tools
+
+
+@pytest.mark.asyncio
+async def test_each_write_tool_has_reviewed_risk_annotations(write_server):
+    tools = {tool.name: tool for tool in await write_server.list_tools()}
+    expected = {
+        "mediafleet_create_task": (False, True),
+        "mediafleet_retry_task": (False, False),
+        "mediafleet_retry_task_callback": (False, False),
+        "mediafleet_create_binding": (False, True),
+        "mediafleet_release_binding": (True, True),
+        "mediafleet_start_recording": (False, True),
+        "mediafleet_stop_recording": (True, True),
+    }
+
+    assert set(tools) == set(expected)
+    for name, (destructive, idempotent) in expected.items():
+        annotations = tools[name].annotations
+        assert annotations.read_only_hint is False
+        assert annotations.destructive_hint is destructive
+        assert annotations.idempotent_hint is idempotent
+        assert annotations.open_world_hint is True
 
 
 @pytest.mark.asyncio
@@ -316,3 +415,197 @@ async def test_sdk_error_is_returned_as_structured_failure(monkeypatch, fake_cli
         },
     }
     assert "test-secret" not in str(result.structured_content)
+
+
+@pytest.mark.asyncio
+async def test_write_tool_requires_explicit_confirmation(fake_client, write_server):
+    result = await write_server.call_tool(
+        "mediafleet_retry_task",
+        {"task_id": "task-1", "confirmed": False},
+    )
+
+    assert result.structured_content["ok"] is False
+    assert result.structured_content["error"]["code"] == "confirmation_required"
+    assert fake_client[-1].tasks.calls == []
+
+
+@pytest.mark.asyncio
+async def test_enabled_write_tools_call_async_sdk_and_project_safe_results(
+    fake_client,
+    write_server,
+):
+    create_task = await write_server.call_tool(
+        "mediafleet_create_task",
+        {
+            "school_code": "1001",
+            "task_type": "video.cover.extract",
+            "callback_url": "https://example.invalid/callback",
+            "idempotency_key": "stable-key-1001",
+            "confirmed": True,
+            "params": {"video_url": "https://example.invalid/video.mp4"},
+        },
+    )
+    retry_task = await write_server.call_tool(
+        "mediafleet_retry_task",
+        {"task_id": "task-1", "confirmed": True},
+    )
+    retry_callback = await write_server.call_tool(
+        "mediafleet_retry_task_callback",
+        {"task_id": "task-1", "confirmed": True},
+    )
+    create_binding = await write_server.call_tool(
+        "mediafleet_create_binding",
+        {
+            "school_code": "1001",
+            "resource_type": "CAMERA",
+            "stream_id": "stream-1",
+            "app": "live",
+            "confirmed": True,
+        },
+    )
+    release_binding = await write_server.call_tool(
+        "mediafleet_release_binding",
+        {"binding_id": "binding-1", "confirmed": True},
+    )
+    start_recording = await write_server.call_tool(
+        "mediafleet_start_recording",
+        {
+            "stream_id": "stream-1",
+            "task_id": "recording-task-1",
+            "confirmed": True,
+        },
+    )
+    stop_recording = await write_server.call_tool(
+        "mediafleet_stop_recording",
+        {"task_id": "recording-task-1", "confirmed": True},
+    )
+
+    assert create_task.structured_content["data"] == {
+        "task_id": "task-created",
+        "created": True,
+    }
+    assert retry_task.structured_content["data"]["accepted"] is True
+    assert "token=secret" not in str(retry_callback.structured_content)
+    assert create_binding.structured_content["data"] == {
+        "stream_id": "stream-1",
+        "server_id": "zlm-1",
+        "endpoint_available": True,
+    }
+    assert "10.0.0.8" not in str(create_binding.structured_content)
+    assert "internal.invalid" not in str(release_binding.structured_content)
+    assert start_recording.structured_content["data"]["command"] == "record.start"
+    assert stop_recording.structured_content["data"]["command"] == "record.stop"
+
+    task_create_call = fake_client[0].tasks.calls[-1]
+    assert task_create_call[0] == "create"
+    assert task_create_call[2]["idempotency_key"] == "stable-key-1001"
+    assert fake_client[3].bindings.calls[-1][0] == "create"
+    assert fake_client[4].bindings.calls[-1] == ("release", ("binding-1",), {})
+    assert fake_client[5].recordings.calls[-1][0] == "start"
+    assert fake_client[6].recordings.calls[-1] == (
+        "stop",
+        ("recording-task-1",),
+        {},
+    )
+
+
+@pytest.mark.asyncio
+async def test_task_write_payload_has_size_limit(fake_client, write_server):
+    result = await write_server.call_tool(
+        "mediafleet_create_task",
+        {
+            "school_code": "1001",
+            "task_type": "video.cover.extract",
+            "callback_url": "https://example.invalid/callback",
+            "idempotency_key": "stable-key-large",
+            "confirmed": True,
+            "params": {"text": "x" * (64 * 1024)},
+        },
+    )
+
+    assert result.structured_content["ok"] is False
+    assert result.structured_content["error"]["code"] == "validation_error"
+
+
+@pytest.mark.asyncio
+async def test_validation_error_does_not_echo_sensitive_write_input(
+    fake_client,
+    write_server,
+):
+    result = await write_server.call_tool(
+        "mediafleet_start_recording",
+        {
+            "stream_id": "stream-1",
+            "task_id": "recording-task-invalid-window",
+            "confirmed": True,
+            "start_time": "2026-10-19T02:00:00Z",
+            "end_time": "2026-10-19T01:00:00Z",
+            "extra_params": {"api_key": "must-not-appear"},
+        },
+    )
+
+    assert result.structured_content["error"]["code"] == "validation_error"
+    assert "end_time" in result.structured_content["error"]["message"]
+    assert "must-not-appear" not in str(result.structured_content)
+
+
+@pytest.mark.asyncio
+async def test_write_permission_denial_is_structured(monkeypatch, fake_client, write_server):
+    error = PermissionDeniedError(
+        status_code=403,
+        detail="缺少 task:write 权限",
+        path="/api/v1/tasks",
+    )
+
+    class ErrorClient(FakeClient):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            self.tasks = AsyncResource(create=error)
+
+    monkeypatch.setattr(server_module, "AsyncMediaFleetClient", ErrorClient)
+
+    result = await write_server.call_tool(
+        "mediafleet_create_task",
+        {
+            "school_code": "1001",
+            "task_type": "video.cover.extract",
+            "callback_url": "https://example.invalid/callback",
+            "idempotency_key": "stable-key-denied",
+            "confirmed": True,
+        },
+    )
+
+    assert result.structured_content["error"] == {
+        "code": "permission_denied",
+        "message": str(error),
+        "retryable": False,
+        "http_status": 403,
+    }
+
+
+@pytest.mark.asyncio
+async def test_write_timeout_is_not_retried_by_mcp(monkeypatch, fake_client, write_server):
+    error = TimeoutError("开始录制请求超时")
+    clients: list[FakeClient] = []
+
+    class ErrorClient(FakeClient):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            self.recordings = AsyncResource(start=error)
+            clients.append(self)
+
+    monkeypatch.setattr(server_module, "AsyncMediaFleetClient", ErrorClient)
+
+    result = await write_server.call_tool(
+        "mediafleet_start_recording",
+        {
+            "stream_id": "stream-1",
+            "task_id": "recording-task-timeout",
+            "confirmed": True,
+        },
+    )
+
+    assert result.structured_content["error"]["code"] == "timeout"
+    assert result.structured_content["error"]["retryable"] is True
+    assert len(clients[0].recordings.calls) == 1
+    assert clients[0].recordings.calls[0][0] == "start"

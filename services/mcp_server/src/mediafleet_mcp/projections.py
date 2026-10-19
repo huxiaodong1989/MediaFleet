@@ -200,6 +200,47 @@ def recording_servers(values: list[Any]) -> dict[str, Any]:
     }
 
 
+def task_created(value: Any) -> dict[str, Any]:
+    return _pick(value, "task_id", "created")
+
+
+def task_retried(value: Any) -> dict[str, Any]:
+    return {
+        "accepted": bool(value.accepted),
+        "task": task_summary(value.task),
+    }
+
+
+def callback_retried(value: Any) -> dict[str, Any]:
+    return {
+        "accepted": bool(value.accepted),
+        "callback_result": safe_value(value.callback_result),
+    }
+
+
+def binding_changed(value: Any) -> dict[str, Any]:
+    return {
+        "stream_id": safe_value(value.stream_id),
+        "server_id": safe_value(value.server_id),
+        "endpoint_available": bool(value.api_url and value.ip),
+    }
+
+
+def recording_command(value: Any) -> dict[str, Any]:
+    return _pick(
+        value,
+        "accepted",
+        "command",
+        "task_id",
+        "target_node_id",
+        "binding_id",
+        "app",
+        "stream_id",
+        "message_id",
+        "confirmed",
+    )
+
+
 def safe_value(value: Any, *, key: str | None = None, depth: int = 0) -> Any:
     if key is not None and _sensitive_key(key):
         return "[REDACTED]"
@@ -269,13 +310,18 @@ def _sanitize_url(value: str) -> str:
 
 
 __all__ = [
+    "binding_changed",
     "binding_page",
+    "callback_retried",
     "health",
     "node_page",
     "overview",
+    "recording_command",
     "recording_servers",
     "safe_value",
+    "task_created",
     "task_detail",
     "task_files",
     "task_page",
+    "task_retried",
 ]

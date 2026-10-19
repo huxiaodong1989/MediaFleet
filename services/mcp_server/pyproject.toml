@@ -1,7 +1,7 @@
 [project]
 name = "mediafleet-mcp"
 version = "0.1.0"
-description = "Read-only MCP server for MediaFleet"
+description = "Allowlisted MCP server for MediaFleet"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

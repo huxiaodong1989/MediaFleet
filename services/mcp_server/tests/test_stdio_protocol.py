@@ -13,6 +13,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 class ControlCenterHandler(BaseHTTPRequestHandler):
     api_key_seen: str | None = None
+    idempotency_key_seen: str | None = None
+    task_create_count = 0
 
     def do_GET(self):
         if self.path == "/health":
@@ -39,6 +41,23 @@ class ControlCenterHandler(BaseHTTPRequestHandler):
             return
         self.send_error(404)
 
+    def do_POST(self):
+        if self.path == "/api/v1/tasks":
+            type(self).api_key_seen = self.headers.get("X-API-Key")
+            type(self).idempotency_key_seen = self.headers.get("Idempotency-Key")
+            type(self).task_create_count += 1
+            content_length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(content_length) or b"{}")
+            assert payload["task_type"] == "video.cover.extract"
+            self._json(
+                {
+                    "task_id": "task-created",
+                    "created": type(self).task_create_count == 1,
+                }
+            )
+            return
+        self.send_error(404)
+
     def log_message(self, format, *args):
         return
 
@@ -54,6 +73,8 @@ class ControlCenterHandler(BaseHTTPRequestHandler):
 @pytest.fixture
 def control_center():
     ControlCenterHandler.api_key_seen = None
+    ControlCenterHandler.idempotency_key_seen = None
+    ControlCenterHandler.task_create_count = 0
     server = ThreadingHTTPServer(("127.0.0.1", 0), ControlCenterHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -100,3 +121,56 @@ async def test_stdio_protocol_lists_tools_and_calls_real_sdk(control_center):
     }
     assert ControlCenterHandler.api_key_seen == "stdio-test-secret"
     assert "stdio-test-secret" not in str(overview)
+
+
+@pytest.mark.asyncio
+async def test_stdio_protocol_exposes_only_allowlisted_write_tool(control_center):
+    env = os.environ.copy()
+    env["MEDIAFLEET_URL"] = control_center
+    env["MEDIAFLEET_API_KEY"] = "stdio-write-secret"
+    env["MEDIAFLEET_MCP_WRITE_TOOLS"] = "mediafleet_create_task"
+    parameters = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "mediafleet_mcp"],
+        env=env,
+    )
+
+    with open(os.devnull, "w", encoding="utf-8") as error_log:
+        async with stdio_client(parameters, errlog=error_log) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                tools = await session.list_tools()
+                arguments = {
+                    "school_code": "1001",
+                    "task_type": "video.cover.extract",
+                    "callback_url": "https://example.invalid/callback",
+                    "idempotency_key": "stdio-stable-key",
+                    "confirmed": True,
+                    "params": {
+                        "video_url": "https://example.invalid/video.mp4"
+                    },
+                }
+                result = await session.call_tool(
+                    "mediafleet_create_task",
+                    arguments,
+                )
+                duplicate = await session.call_tool(
+                    "mediafleet_create_task",
+                    arguments,
+                )
+
+    tool_names = {tool.name for tool in tools.tools}
+    assert "mediafleet_create_task" in tool_names
+    assert "mediafleet_stop_recording" not in tool_names
+    assert result.structured_content["data"] == {
+        "task_id": "task-created",
+        "created": True,
+    }
+    assert duplicate.structured_content["data"] == {
+        "task_id": "task-created",
+        "created": False,
+    }
+    assert ControlCenterHandler.task_create_count == 2
+    assert ControlCenterHandler.api_key_seen == "stdio-write-secret"
+    assert ControlCenterHandler.idempotency_key_seen == "stdio-stable-key"
+    assert "stdio-write-secret" not in str(result)

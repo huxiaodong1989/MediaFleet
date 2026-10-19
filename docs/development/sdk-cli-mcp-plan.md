@@ -6,7 +6,7 @@
 
 1. Python SDK：封装控制中心 REST API，提供类型、认证、超时、重试、分页和错误分类。
 2. `mediafleet` CLI：通过 SDK 提供适合人工运维、CI 和冒烟测试的命令行入口。
-3. MCP Server：通过 SDK 向模型提供小而明确的结构化工具，第一版只读。
+3. MCP Server：通过 SDK 向模型提供小而明确的结构化工具，默认只读，写工具逐项允许。
 
 SDK、CLI 和 MCP 都不得直接连接 MySQL、RabbitMQ、Redis、对象存储或节点本地目录，也不得
 导入控制中心运行时、仓储或消息发布器。
@@ -32,8 +32,8 @@ SDK、CLI 和 MCP 都不得直接连接 MySQL、RabbitMQ、Redis、对象存储�
 
 - 第一版 SDK 可以覆盖读取和写入 API，但自动重试策略必须区分读写。
 - 第一版 CLI 默认交付只读命令，写命令进入第二阶段。
-- 第一版 MCP 只注册只读工具。
-- MCP 写工具必须等范围化授权和服务端可信审计身份完成后再开放。
+- MCP 默认只注册只读工具；部署方可逐项允许已审核的业务写工具。
+- MCP 写工具复用范围化授权、服务端可信审计和 SDK 写资源，不提供旁路能力。
 
 ## 3. 仓库与发布结构
 
@@ -287,7 +287,24 @@ mediafleet_list_recording_servers
 - 工具名称和描述不使用“执行任意操作”等模糊表述。
 - 不提供任意 HTTP 请求、SQL、Shell、文件访问、RabbitMQ 发布或环境变量修改工具。
 
-### 6.3 写工具开放条件
+### 6.3 受控写工具（已实现）
+
+```text
+mediafleet_create_task
+mediafleet_retry_task
+mediafleet_retry_task_callback
+mediafleet_create_binding
+mediafleet_release_binding
+mediafleet_start_recording
+mediafleet_stop_recording
+```
+
+写工具默认不注册。部署方通过 `MEDIAFLEET_MCP_WRITE_TOOLS` 使用完整工具名逐项允许；每次调用
+必须传入 `confirmed=true`，任务创建还必须提供稳定 `idempotency_key`，开始录制必须提供稳定
+`task_id`。响应继续裁剪内部地址和敏感 URL。凭据管理、录制服务器状态修改、节点管理和任意
+配置修改不进入 MCP 工具列表。
+
+### 6.4 写工具开放条件
 
 以下条件全部满足后才讨论 MCP 写工具：
 
@@ -295,7 +312,7 @@ mediafleet_list_recording_servers
 2. 凭据具备至少 `read`、`task:write`、`recording:write`、`admin:write` 权限范围。
 3. 每个写工具定义稳定幂等键和审计记录。
 4. MCP Server 有独立允许工具列表，默认仍只读。
-5. 写工具有端到端重复调用、超时重试和权限拒绝测试。
+5. 写工具有端到端重复调用、不自动重试和权限拒绝测试。
 
 ## 7. 实施阶段与审核点
 
@@ -334,7 +351,7 @@ mediafleet_list_recording_servers
 
 审核点：实现已经完成；确认命令层级、配置位置和输出格式后，再进入 MCP。
 
-### 阶段 C：只读 MCP（已实现，等待完整功能开发结束后统一审核）
+### 阶段 C：只读 MCP（已实现）
 
 范围：
 
@@ -349,7 +366,7 @@ mediafleet_list_recording_servers
 - 大列表受分页限制，返回不包含 API Key 和敏感响应头。
 - stdio 协议测试和真实测试控制中心调用通过。
 
-审核点：完整功能开发结束后，决定是否先补权限模型，还是长期保留只读 MCP。
+审核点：已完成只读工具、协议和敏感字段投影审核。
 
 ### 阶段 D：身份、权限与受控写操作（已实现当前范围）
 
@@ -362,6 +379,9 @@ mediafleet_list_recording_servers
 - 写操作使用可信 principal 记录创建人或更新人，忽略请求体中的旧操作者字段。
 - JSON 输入有大小上限并使用严格类型模型，SDK 不自动重试写请求。
 - 经单独批准的 MCP 写工具。
+
+当前已实现 7 个逐项允许的业务写工具，默认工具列表仍只有 8 个只读工具。所有写调用要求
+显式确认；任务创建、重复调用、权限拒绝、超时不重试和 stdio 真实 SDK 链路均有测试。
 
 ## 8. PR 拆分建议
 
@@ -382,12 +402,12 @@ mediafleet_list_recording_servers
 - 不提供直接访问 MySQL、RabbitMQ、对象存储或节点文件的后门。
 - 不实现通用 HTTP 代理、任意 Shell、SQL 或环境变量工具。
 - 不立即发布 PyPI 包或公共 MCP 服务。
-- 不在没有范围化授权时开放 MCP 写操作。
+- 不开放未经过范围化授权和可信审计的 MCP 写操作。
 
 ## 10. 已确认决策
 
 1. 采用“同仓库三个独立安装包”的结构。
-2. 第一版 CLI 和 MCP 都只读。
+2. CLI 已提供受控写命令；MCP 默认只读，写工具由部署方逐项允许。
 3. CLI 采用 Typer + Rich，并使用操作系统凭据库保存本地 API Key。
 4. MCP 第一版只提供 stdio，不提供远程 HTTP。
 5. SDK、CLI、MCP 分三个 PR 实施和审核。

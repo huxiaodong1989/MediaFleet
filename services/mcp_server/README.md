@@ -1,6 +1,6 @@
 # MediaFleet MCP Server
 
-`mediafleet-mcp` 是 MediaFleet 的只读 MCP Server。它使用 stdio 传输，并且只通过
+`mediafleet-mcp` 是 MediaFleet 默认只读、写工具逐项允许的 MCP Server。它使用 stdio 传输，并且只通过
 [`mediafleet-sdk`](../../packages/mediafleet-sdk/README.md) 调用控制中心 REST API，不直接访问
 MySQL、RabbitMQ、Redis、对象存储或节点文件系统。
 
@@ -39,6 +39,7 @@ uv run --package mediafleet-mcp mediafleet-mcp
 | --- | --- | --- |
 | `MEDIAFLEET_CA_BUNDLE` | 自定义 CA 文件绝对路径 | 系统信任库 |
 | `MEDIAFLEET_TIMEOUT` | 单次 SDK 请求超时，范围为 `(0, 120]` 秒 | `30` |
+| `MEDIAFLEET_MCP_WRITE_TOOLS` | 逗号分隔的允许写工具完整名称 | 空，保持只读 |
 
 MCP Server 只支持 stdio，不监听网络端口。远程 Streamable HTTP 需要独立的客户端身份认证和
 权限设计，当前不开放。
@@ -89,6 +90,34 @@ uv run --directory /path/to/MediaFleet --package mediafleet-mcp mediafleet-mcp
 
 列表页大小限制为 `1` 到 `100`，避免一次把无限数据放入模型上下文。
 
+## 受控写工具
+
+写工具默认不注册。部署方需要给 MCP 单独签发最小权限凭据，并通过
+`MEDIAFLEET_MCP_WRITE_TOOLS` 使用完整工具名逐项允许：
+
+| 工具 | 所需范围 | 额外约束 |
+| --- | --- | --- |
+| `mediafleet_create_task` | `task:write` | 稳定 `idempotency_key`，显式确认 |
+| `mediafleet_retry_task` | `task:write` | 仅失败或已取消任务，显式确认 |
+| `mediafleet_retry_task_callback` | `task:write` | 会再次调用外部回调，显式确认 |
+| `mediafleet_create_binding` | `recording:write` | 相同流复用已有绑定，显式确认 |
+| `mediafleet_release_binding` | `recording:write` | 仅明确解绑、迁移或删除时使用，显式确认 |
+| `mediafleet_start_recording` | `recording:write` | 必须提供稳定 `task_id`，显式确认 |
+| `mediafleet_stop_recording` | `recording:write` | 停止后继续后处理，显式确认 |
+
+例如只允许创建任务和开始/停止录制：
+
+```powershell
+$env:MEDIAFLEET_MCP_WRITE_TOOLS = "mediafleet_create_task,mediafleet_start_recording,mediafleet_stop_recording"
+```
+
+每个写工具都要求参数 `confirmed=true`。这个确认不能替代 MCP 客户端自己的人工审批，也不能
+替代控制中心的范围化授权与可信审计。写请求通过 SDK 发往控制中心，不会由 MCP 直接发布消息
+或修改数据库。写请求遇到超时不会由 MCP 或 SDK 自动重试；调用方只有在确认服务端幂等语义后
+才能使用相同稳定业务键重试。
+
+MCP 不开放凭据创建、轮换、吊销、录制服务器状态变更、节点管理或任意运行配置修改。
+
 ## 输出和错误
 
 每个工具返回稳定结构：
@@ -101,8 +130,8 @@ uv run --directory /path/to/MediaFleet --package mediafleet-mcp mediafleet-mcp
 }
 ```
 
-可预期错误不会包含 API Key 或响应头，并按类型区分认证、权限、不存在、冲突、限流、超时、
-服务暂时不可用和响应契约错误：
+可预期错误不会包含 API Key 或响应头，并按类型区分确认缺失、认证、权限、不存在、冲突、
+限流、超时、服务暂时不可用和响应契约错误：
 
 ```json
 {
@@ -132,7 +161,8 @@ uv build --package mediafleet-mcp
 
 ## 安全边界
 
-- 工具全部标记为只读、非破坏和幂等。
-- 不提供任意 HTTP、SQL、Shell、文件访问、消息发布或环境变量修改工具。
+- 默认工具列表只有 8 个只读工具，写工具必须由部署方逐项允许。
+- 写工具按实际语义标记只读、破坏性和幂等提示，并要求显式确认。
+- 不提供任意 HTTP、SQL、Shell、文件访问、消息发布、凭据管理或环境变量修改工具。
 - 不在日志、工具结果或协议错误中输出 API Key。
-- 写工具等待调用方身份、权限范围、可信审计和幂等策略完成后再设计。
+- 控制中心继续执行范围化授权、幂等状态迁移和可信审计；MCP 不拥有额外权限。

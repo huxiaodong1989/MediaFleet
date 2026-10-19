@@ -16,7 +16,7 @@ MediaFleet 是一个面向多节点部署的媒体调度、录制与处理平台
 - 通过共享队列横向扩展视频、音频、离线 ASR 和对象检测任务。
 - 将内容分析作为独立能力池部署，避免与通用媒体计算相互争抢资源。
 - 将课堂图像分析作为独立服务部署，支持录像选源、统一时间点抽帧、多图视觉模型与持久检查点。
-- 提供 REST API、轻量运维控制台、类型化 Python SDK、CLI 和只读 MCP Server。
+- 提供 REST API、轻量运维控制台、类型化 Python SDK、CLI 和允许列表控制的 MCP Server。
 - 支持范围化 API 凭据、过期、轮换、吊销和可信写请求审计。
 
 ## 系统组成
@@ -62,7 +62,7 @@ services/
   media_worker/         通用媒体任务消费者与处理器注册表
   content_analysis/     可选内容分析服务
   image_analysis/       可选课堂图像分析服务
-  mcp_server/           基于异步 SDK 的只读 stdio MCP Server
+  mcp_server/           基于异步 SDK 的受控 stdio MCP Server
 media_platform/
   application/          可被 REST、CLI、MCP 等入口复用的应用服务
   contracts/            跨服务消息契约与 RabbitMQ 稳定命名
